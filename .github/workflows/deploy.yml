@@ -18,7 +18,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
-            cd /home/ubuntu/ceetool
+            cd /home/ubuntu/ceetool_homepage
 
             # 최신 코드 동기화
             git fetch --all
@@ -33,5 +33,5 @@ jobs:
 
             # 퍼미션 자동 부여 (정적 파일 nginx에서 직접 서빙용)
             sudo chmod o+rx /home/ubuntu
-            sudo chmod o+rx /home/ubuntu/ceetool
-            sudo chmod -R o+rx /home/ubuntu/ceetool/dist
+            sudo chmod o+rx /home/ubuntu/ceetool_homepage
+            sudo chmod -R o+rx /home/ubuntu/ceetool_homepage/dist
