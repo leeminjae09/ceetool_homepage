@@ -1,0 +1,37 @@
+# .github/workflows/deploy.yml
+name: CI/CD SSH Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: 43.202.220.56
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/ceetool
+
+            # 최신 코드 동기화
+            git fetch --all
+            git reset --hard origin/main
+
+            # 의존성 설치 및 빌드
+            npm ci
+            npm run build
+
+            # pm2 프로세스 재시작
+            pm2 restart ceetool
+
+            # 퍼미션 자동 부여 (정적 파일 nginx에서 직접 서빙용)
+            sudo chmod o+rx /home/ubuntu
+            sudo chmod o+rx /home/ubuntu/ceetool
+            sudo chmod -R o+rx /home/ubuntu/ceetool/dist
