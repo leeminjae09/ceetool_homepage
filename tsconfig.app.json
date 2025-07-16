@@ -22,10 +22,11 @@
     "noUncheckedSideEffectImports": true,
 
     /* Paths */
+    "baseUrl": "src",
     "paths": {
-      "app/*": ["src/app/*"],
-      "components/*": ["src/components/*"],
-      "hooks/*": ["src/hooks/*"]
+    "app/*": ["app/*"],
+    "components/*": ["components/*"],
+    "hooks/*": ["hooks/*"]
     }
   },
   "include": ["src"]
