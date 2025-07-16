@@ -7,7 +7,6 @@ import {
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 
-
 function App() {
   return (
     <main>
@@ -58,7 +57,7 @@ function App() {
 
           {/* KakaoTalk Button */}
           <a
-            href="https://open.kakao.com/o/abc12345"
+            href="https://pf.kakao.com/_lDexan"
             target="_blank"
             rel="noopener noreferrer"
             className="bg-kakao text-black px-6 py-3 rounded-lg font-bold flex items-center space-x-3"
@@ -72,7 +71,7 @@ function App() {
         {/* 웹사이트 개발 */}
         <div className="bg-gray-800 p-6 rounded-lg text-white flex flex-col min-h-[280px]">
           <h2 className="text-xl font-bold text-blue-400">웹사이트 개발</h2>
-          <p className="text-sm text-gray-300">쇼핑몰·어드민 페이지, 서버 이전, 시스템 연동 등 다양한 웹사이트 구축 경험</p>
+          <p className="text-sm text-gray-300 my-2">쇼핑몰·어드민 페이지, 서버 이전, 시스템 연동 등 다양한 웹사이트 구축 경험</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>DSWAR Market – 쇼핑몰·어드민 페이지 제작</li>
             <li>청담 쇼핑몰 – 서버 이전·파싱 자동화</li>
@@ -90,7 +89,7 @@ function App() {
         {/* 결제 연동 */}
         <div className="bg-gray-800 p-6 rounded-lg text-white flex flex-col min-h-[280px]">
           <h2 className="text-xl font-bold text-blue-400">결제 연동</h2>
-          <p className="text-sm text-gray-300">신용카드, USDT, PayPal 등 다양한 결제 수단 통합 및 WooCommerce 연동</p>
+          <p className="text-sm text-gray-300 my-2">신용카드, USDT, PayPal 등 다양한 결제 수단 통합 및 WooCommerce 연동</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>C9Pro – 카드·USDT·PayPal·멤버십 연동</li>
             <li>ForYouPay – 우커머스 통합결제 플러그인</li>
@@ -106,7 +105,7 @@ function App() {
         {/* 코인 개발 */}
         <div className="bg-gray-800 p-6 rounded-lg text-white flex flex-col min-h-[280px]">
           <h2 className="text-xl font-bold text-blue-400">코인 개발</h2>
-          <p className="text-sm text-gray-300">메인넷 구축, 거래소 연동, 코인 전송 및 SWAP API 개발 등 블록체인 기반 시스템</p>
+          <p className="text-sm text-gray-300 my-2">메인넷 구축, 거래소 연동, 코인 전송 및 SWAP API 개발 등 블록체인 기반 시스템</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>이더메인넷 – 코인 전송·Blockscout 구축</li>
             <li>파이&솔라나 – Solana SWAP·MEME API</li>
@@ -122,7 +121,7 @@ function App() {
         {/* API·플랫폼 */}
         <div className="bg-gray-800 p-6 rounded-lg text-white flex flex-col min-h-[280px]">
           <h2 className="text-xl font-bold text-blue-400">API·플랫폼</h2>
-          <p className="text-sm text-gray-300">ERP, 공공기관 API, 내부 플랫폼 등 다양한 B2B API 및 플랫폼 개발 경험</p>
+          <p className="text-sm text-gray-300 my-2">ERP, 공공기관 API, 내부 플랫폼 등 다양한 B2B API 및 플랫폼 개발 경험</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>ASDS – 판매 API 플랫폼 제작</li>
             <li>Figwts – 주문 API·차트 API</li>
@@ -138,7 +137,7 @@ function App() {
         {/* 데이터 분석 */}
         <div className="bg-gray-800 p-6 rounded-lg text-white flex flex-col min-h-[280px]">
           <h2 className="text-xl font-bold text-blue-400">데이터 분석</h2>
-          <p className="text-sm text-gray-300">금융 데이터 수집, 오픈 API 연구, 데이터 기반 의사결정 지원 분석툴</p>
+          <p className="text-sm text-gray-300 my-2">금융 데이터 수집, 오픈 API 연구, 데이터 기반 의사결정 지원 분석툴</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>빗썸 김치프리미엄 – 거래 데이터 10만건</li>
             <li>investLog – 이용약관·개인정보 방침 작성</li>
@@ -153,7 +152,7 @@ function App() {
         {/* 툴·자동화 */}
         <div className="bg-gray-800 p-6 rounded-lg text-white flex flex-col min-h-[280px]">
           <h2 className="text-xl font-bold text-blue-400">툴·자동화</h2>
-          <p className="text-sm text-gray-300">업로드 툴, FTP 자동화, 알림 시스템 등 운영을 위한 다양한 자동화 도구 개발</p>
+          <p className="text-sm text-gray-300 my-2">업로드 툴, FTP 자동화, 알림 시스템 등 운영을 위한 다양한 자동화 도구 개발</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>플리키 – 상품 자동업로드·워터마크</li>
             <li>SayHello – FTP API + 콘솔 툴</li>
@@ -165,28 +164,28 @@ function App() {
           </div>
         </div>
       </section>
-<footer className="pb-16 max-w-screen-lg xl:max-w-screen-xl mx-auto text-center text-gray-400 font-bold text-sm leading-relaxed space-y-1">
-  <p>
-    씨툴(CEETOOL) | 업태: 정보통신업
-    <br className="block sm:hidden" />
-    <span className="hidden sm:inline"> | </span>
-    <span className="inline sm:inline">사업자등록번호: 886-12-02119</span>
-  </p>
-  <p>경기도 성남시 수정구 복정로72번길 10, 401호 (복정동)</p>
-  <p>
-    <span className="block sm:inline">전화번호: 010-2195-6202</span>
-    <span className="hidden sm:inline"> | </span>
-    <span className="block sm:inline">
-      이메일:{" "}
-      <a
-        href="mailto:john@ceetool.com"
-        className="text-blue-500 hover:underline font-semibold"
-      >
-        john@ceetool.com
-      </a>
-    </span>
-  </p>
-</footer>
+      <footer className="pb-16 max-w-screen-lg xl:max-w-screen-xl mx-auto text-center text-gray-400 font-bold text-sm leading-relaxed space-y-1">
+        <p>
+          씨툴(CEETOOL) | 업태: 정보통신업
+          <br className="block sm:hidden" />
+          <span className="hidden sm:inline"> | </span>
+          <span className="inline sm:inline">사업자등록번호: 886-12-02119</span>
+        </p>
+        <p>경기도 성남시 수정구 복정로72번길 10, 401호 (복정동)</p>
+        <p>
+          <span className="block sm:inline">전화번호: 010-2195-6202</span>
+          <span className="hidden sm:inline"> | </span>
+          <span className="block sm:inline">
+            이메일:{" "}
+            <a
+              href="mailto:john@ceetool.com"
+              className="text-blue-500 hover:underline font-semibold"
+            >
+              john@ceetool.com
+            </a>
+          </span>
+        </p>
+      </footer>
 
 
 
