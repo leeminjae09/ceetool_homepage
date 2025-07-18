@@ -27,3 +27,18 @@
     animation: slide 4s linear infinite;
   }
 }
+
+.swiper-button-prev,
+.swiper-button-next {
+  top: 70% !important;
+  transform: translateY(-50%);
+  z-index: 20;
+}
+
+.swiper-button-prev {
+  left: 0 !important;
+}
+
+.swiper-button-next {
+  right: 20px !important;
+}
