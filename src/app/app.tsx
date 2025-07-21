@@ -47,7 +47,7 @@ function App() {
 
         <div className="absolute top-16 right-2 sm:top-12 sm:right-12 opacity-30 sm:opacity-50">
           <img
-            src="/public/logos//ceetool.logo.png"
+            src="/logos/ceetool.logo.png"
             alt="Ceetool Logo"
             className="w-20 h-20 sm:w-40 sm:h-40 object-contain"
           />
@@ -63,7 +63,7 @@ function App() {
             rel="noopener noreferrer"
             className="bg-blue-500 text-white font-bold px-6 py-3 rounded-lg flex items-center space-x-3"
           >
-            <img src="/public/logos/telegram-logo.png" alt="Telegram" className="w-5 h-5" />
+            <img src="/logos/telegram-logo.png" alt="Telegram" className="w-5 h-5" />
             <span>@etimjang</span>
           </a>
 
@@ -74,7 +74,7 @@ function App() {
             rel="noopener noreferrer"
             className="bg-kakao text-black px-6 py-3 rounded-lg font-bold flex items-center space-x-3"
           >
-            <img src="/public/logos//kakao-logo.png" alt="KakaoTalk" className="w-5 h-5" />
+            <img src="/logos//kakao-logo.png" alt="KakaoTalk" className="w-5 h-5" />
             <span>johnlee4</span>
           </a>
         </div>
