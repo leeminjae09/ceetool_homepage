@@ -79,7 +79,6 @@ export const Modal: React.FC<ModalProps> = ({
   images={thumbnails[index] ?? []}
   initialImage={imageUrl ?? (thumbnails[index]?.[0] ?? null)}
 />
-
       </div>
     </div>
   );
