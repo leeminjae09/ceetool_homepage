@@ -11,7 +11,7 @@ interface ModalProps {
 
 // 2. Your data arrays
 const modalHeaders = [
-  "ITEM Trading PRE-SALE",
+  "NFT Market",
   "결제 연동",
   "코인 개발",
   "API·플랫폼",
