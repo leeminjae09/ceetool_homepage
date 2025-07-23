@@ -25,7 +25,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
       {/* Title */}
       {title && (
         <div className="w-full py-6 px-4 sm:py-10 sm:px-8">
-          <div className="text-2xl sm:text-3xl font-extrabold text-white mb-2">{title}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-white mb-2 border-b-4 border-blue-500 inline-block pb-2">{title}</div>
         </div>
       )}
       {/* Content Row */}
@@ -46,7 +46,6 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
               className="object-contain w-full h-full transition-all duration-200"
             />
           )}
-
         </div>
         {/* Right: Description */}
         <div className="w-full lg:w-[30%] flex flex-col justify-start pt-2">
