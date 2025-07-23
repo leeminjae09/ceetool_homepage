@@ -6,20 +6,19 @@ import {
   ChartBarIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
-import { useState } from "react";
-import { Modal } from "components/Modal";
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import DocumentationPage from "components/ProjectPage";
 
-const modalImages = [
-  "/images/dswar-ex.png",
-  null,
-  null,
-  null,
-  null,
-  null,
-];
+function Home() {
+  const docTypes = [
+    "nft-market",
+    "payment-integration",
+    "coin-development",
+    "api-platform",
+    "data-analysis",
+    "automation-tools"
+  ];
 
-function App() {
-  const [openModal, setOpenModal] = useState<number | null>(null);
   return (
     <main>
       <header className="pt-16 z-10 relative max-w-screen-lg xl:max-w-screen-xl mx-auto">
@@ -52,7 +51,6 @@ function App() {
             className="w-20 h-20 sm:w-40 sm:h-40 object-contain"
           />
         </div>
-
       </header>
       <section className="max-w-screen-lg xl:max-w-screen-xl mx-auto my-6">
         <div className="sm:flex sm:space-x-6 space-y-4 sm:space-y-0 items-center">
@@ -66,7 +64,6 @@ function App() {
             <img src="/logos/telegram-logo.png" alt="Telegram" className="w-5 h-5" />
             <span>@etimjang</span>
           </a>
-
           {/* KakaoTalk Button */}
           <a
             href="https://pf.kakao.com/_lDexan"
@@ -93,7 +90,9 @@ function App() {
             <li>코레일 – 소켓 통신 페이지 제작</li>
           </ul>
           <div className="mt-auto flex justify-between items-end pt-6">
-            <a href="#" onClick={e => { e.preventDefault(); setOpenModal(0); }} className="text-sm font-bold text-white hover:underline">View documentation →</a>
+            <Link to={`/docs/${docTypes[0]}`} className="text-sm font-bold text-white hover:underline">
+              View documentation →
+            </Link>
             <CodeBracketIcon className="w-8 h-8 text-gray-400" />
           </div>
         </div>
@@ -109,7 +108,9 @@ function App() {
             <li>쿠키페이PG – WooCommerce PG 연동</li>
           </ul>
           <div className="mt-auto flex justify-between items-end pt-6">
-            <a href="#" onClick={e => { e.preventDefault(); setOpenModal(1); }} className="text-sm font-bold text-white hover:underline">View documentation →</a>
+            <Link to={`/docs/${docTypes[1]}`} className="text-sm font-bold text-white hover:underline">
+              View documentation →
+            </Link>
             <CreditCardIcon className="w-8 h-8 text-gray-400" />
           </div>
         </div>
@@ -125,7 +126,9 @@ function App() {
             <li>테더마스터 – 거래소 연동 페이지</li>
           </ul>
           <div className="mt-auto flex justify-between items-end pt-6">
-            <a href="#" onClick={e => { e.preventDefault(); setOpenModal(2); }} className="text-sm font-bold text-white hover:underline">View documentation →</a>
+            <Link to={`/docs/${docTypes[2]}`} className="text-sm font-bold text-white hover:underline">
+              View documentation →
+            </Link>
             <BanknotesIcon className="w-8 h-8 text-gray-400" />
           </div>
         </div>
@@ -141,7 +144,9 @@ function App() {
             <li>KIPVC – KICS 통합·테이블 설계</li>
           </ul>
           <div className="mt-auto flex justify-between items-end pt-6">
-            <a href="#" onClick={e => { e.preventDefault(); setOpenModal(3); }} className="text-sm font-bold text-white hover:underline">View documentation →</a>
+            <Link to={`/docs/${docTypes[3]}`} className="text-sm font-bold text-white hover:underline">
+              View documentation →
+            </Link>
             <ServerStackIcon className="w-8 h-8 text-gray-400" />
           </div>
         </div>
@@ -156,7 +161,9 @@ function App() {
             <li>금결원 파워볼 – 금융결제원 오픈 API 연구</li>
           </ul>
           <div className="mt-auto flex justify-between items-end pt-6">
-            <a href="#" onClick={e => { e.preventDefault(); setOpenModal(4); }} className="text-sm font-bold text-white hover:underline">View documentation →</a>
+            <Link to={`/docs/${docTypes[4]}`} className="text-sm font-bold text-white hover:underline">
+              View documentation →
+            </Link>
             <ChartBarIcon className="w-8 h-8 text-gray-400" />
           </div>
         </div>
@@ -171,7 +178,9 @@ function App() {
             <li>MD AUTO – 퍼블리싱 + 텔레그램 알림</li>
           </ul>
           <div className="mt-auto flex justify-between items-end pt-6">
-            <a href="#" onClick={e => { e.preventDefault(); setOpenModal(5); }} className="text-sm font-bold text-white hover:underline">View documentation →</a>
+            <Link to={`/docs/${docTypes[5]}`} className="text-sm font-bold text-white hover:underline">
+              View documentation →
+            </Link>
             <Cog6ToothIcon className="w-8 h-8 text-gray-400" />
           </div>
         </div>
@@ -198,14 +207,19 @@ function App() {
           </span>
         </p>
       </footer>
-      <Modal
-        index={openModal ?? 0}
-        imageUrl={modalImages[openModal ?? 0]}
-        open={openModal !== null}
-        onClose={() => setOpenModal(null)}
-      />
-
     </main>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/docs/:docType" element={<DocumentationPage />} />
+        {/* Optionally, add a catch-all route for 404 */}
+      </Routes>
+    </BrowserRouter>
   );
 }
 

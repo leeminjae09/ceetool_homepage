@@ -55,14 +55,14 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
         </div>
       </div>
       {/* Swiper Carousel (thumbnails) */}
-      <div className="w-full px-2 sm:px-8 mt-8 mb-8">
+      <div className="w-full px-2 mt-8 mb-8">
         <div className="w-full lg:w-[70%]">
           <Swiper
-            spaceBetween={-150}
+            spaceBetween={-125}
             slidesPerView={3}
             breakpoints={{
               640: { slidesPerView: 4, spaceBetween: -200 },
-              1024: { slidesPerView: 4, spaceBetween: -400 },
+              1024: { slidesPerView: 4, spaceBetween: -300 },
             }}
             className="rounded-xl !pl-4 !pr-4 sm:!pl-12 sm:!pr-12"
           >

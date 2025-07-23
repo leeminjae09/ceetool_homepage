@@ -1,15 +1,8 @@
 import React from "react";
 import ProjectDetails from "./organisms/project-details/project-details";
+import { useParams, Navigate } from "react-router-dom";
 
-// 1. ModalProps interface
-interface ModalProps {
-  index: number;
-  imageUrl?: string | null;
-  open: boolean;
-  onClose: () => void;
-}
-
-// 2. Your data arrays
+// Data arrays (same as before)
 const modalHeaders = [
   "NFT Market",
   "결제 연동",
@@ -41,10 +34,19 @@ const thumbnails = [
   []
 ];
 
-// 3. Each modal's content as a function
+// Map docType from URL to an index for your content
+const docTypeToIndex: { [key: string]: number } = {
+  "nft-market": 0,
+  "payment-integration": 1,
+  "coin-development": 2,
+  "api-platform": 3,
+  "data-analysis": 4,
+  "automation-tools": 5,
+};
+
+// Content rendering logic (same as before)
 const modalContents = [
-  // Modal 0: DS.WAR & SHINI
-    () => (
+  () => (
     <>
       <ProjectDetails
         title={modalHeaders[0]}
@@ -67,12 +69,11 @@ Customers can conveniently book their services through KakaoTalk or the website.
       />
     </>
   ),
-  // Modal 1: C9PRO
   () => (
     <>
       <ProjectDetails
         title="c9-Pro"
-        description={modalDescriptions[0]}
+        description={modalDescriptions[1]}
         images={[
           "/images/projects/c9pro/c9pro-ex1.mp4",
           "/images/projects/c9pro/c9pro-ex2.png",
@@ -84,48 +85,43 @@ Customers can conveniently book their services through KakaoTalk or the website.
       />
     </>
   ),
-  // Modal 2: Placeholder
   () => (
-    <div className="text-white p-8">No details for this modal yet.</div>
+    <div className="text-white p-8">No details for this section yet.</div>
   ),
-  // Modal 3: Placeholder
   () => (
-    <div className="text-white p-8">No details for this modal yet.</div>
+    <div className="text-white p-8">No details for this section yet.</div>
   ),
-  // Modal 4: Placeholder
   () => (
-    <div className="text-white p-8">No details for this modal yet.</div>
+    <div className="text-white p-8">No details for this section yet.</div>
   ),
-  // Modal 5: Placeholder
   () => (
-    <div className="text-white p-8">No details for this modal yet.</div>
+    <div className="text-white p-8">No details for this section yet.</div>
   ),
 ];
 
-// 4. The Modal component (THIS IS THE IMPORTANT PART)
-export const Modal: React.FC<ModalProps> = ({ index, open, onClose }) => {
-  if (!open) return null;
+// The DocumentationPage component
+export const DocumentationPage: React.FC = () => {
+  const { docType } = useParams<{ docType: string }>();
+  const index = docTypeToIndex[docType ?? ""];
+
+  // If docType is invalid, you can redirect to a 404 page or show an error
+  if (typeof index !== "number" || index < 0 || index >= modalContents.length) {
+    return <div className="text-white p-12 text-2xl">페이지를 찾을 수 없습니다.</div>;
+    // Or: return <Navigate to="/404" />;
+  }
 
   return (
-    <div
-      className="fixed inset-0 flex items-start justify-center z-50"
-      onClick={onClose}
-    >
-      <div
-        className="relative rounded-xl bg-black bg-opacity-90 max-w-[90rem] w-full h-auto flex flex-col overflow-y-auto max-h-[95vh]"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Close Button */}
-        <button
-          className="absolute top-6 right-10 text-gray-300 text-2xl z-10"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          &times;
-        </button>
-        {/* Render your custom content for each modal */}
-        {modalContents[index]?.()}
-      </div>
-    </div>
+    <main>      
+      <section className="max-w-screen-lg xl:max-w-screen-xl mx-auto bg-black bg-opacity-50">
+        <div className="w-full flex flex-col ml-7 pt-7">
+            <div className="text-2xl sm:text-3xl font-extrabold text-white  inline-block pb-2">
+              LEFT ARROW
+            </div>
+        </div>
+        {modalContents[index]()}
+      </section>
+    </main>
   );
 };
+
+export default DocumentationPage;
