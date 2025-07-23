@@ -86,7 +86,7 @@ function App() {
           <p className="text-sm text-gray-300 my-2">쇼핑몰·어드민 페이지, 서버 이전, 시스템 연동 등 다양한 웹사이트 구축 경험</p>
           <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
             <li>DSWAR Market – 쇼핑몰·어드민 페이지 제작</li>
-            <li>청담 쇼핑몰 – 서버 이전·파싱 자동화</li>
+            <li>신이 홈페이지 – 결제 및 예약 관리시스템 개발</li>
             <li>주다스 글로벌 쇼핑몰 – 페이버스 결제 취소 API 개발</li>
             <li>스카이젯 – 비동기화 전환·통합결제 모듈 연동</li>
             <li>크리에이티브코드 – HTS 복구·차트 API 연동</li>
