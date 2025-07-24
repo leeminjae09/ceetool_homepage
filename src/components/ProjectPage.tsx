@@ -46,7 +46,6 @@ const docTypeToIndex: { [key: string]: number } = {
   "automation-tools": 5,
 };
 
-// Content rendering logic (same as before)
 const modalContents = [
   () => (
     <>
@@ -118,7 +117,7 @@ export const DocumentationPage: React.FC = () => {
   return (
     <main>
       <section className="max-w-screen-lg xl:max-w-screen-xl mx-auto bg-black bg-opacity-50">
-        <div className="sticky top-0 z-10 bg-black bg-opacity-50 w-full flex flex-col pt-7">
+        <div className="sticky top-0 z-10 bg-black w-full flex flex-col pt-8">
           <Link
             to="/"
             className="inline-flex items-center gap-2 group w-max hover:underline focus:outline-none ml-7">
@@ -130,7 +129,7 @@ export const DocumentationPage: React.FC = () => {
             </span>
           </Link>
         </div>
-        {modalContents[index]()}
+          {modalContents[index]()}
       </section>
     </main>
   );
