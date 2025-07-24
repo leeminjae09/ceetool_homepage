@@ -1,6 +1,8 @@
 import React from "react";
 import ProjectDetails from "./organisms/project-details/project-details";
-import { useParams, Navigate } from "react-router-dom";
+import { useParams,} from "react-router-dom";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import { Link } from "react-router-dom";
 
 // Data arrays (same as before)
 const modalHeaders = [
@@ -50,12 +52,14 @@ const modalContents = [
     <>
       <ProjectDetails
         title={modalHeaders[0]}
+        url="(https://dswmarket.devwlt.org)"
         description={modalDescriptions[0]}
         images={thumbnails[0]}
         initialImage="/images/projects/dswar/dswar-ex.png"
       />
       <ProjectDetails
         title="SHINI Homepage"
+        url="https://xn--zv4bu7f.com/"
         description="신이 is a major South Korean cleaning franchise with over 3,000 locations nationwide.
 The company offers professional cleaning services, emphasizing quick response and high-quality work performed by trained staff.
 Customers can conveniently book their services through KakaoTalk or the website."
@@ -73,6 +77,7 @@ Customers can conveniently book their services through KakaoTalk or the website.
     <>
       <ProjectDetails
         title="c9-Pro"
+        url="https://c9-pro.com"
         description={modalDescriptions[1]}
         images={[
           "/images/projects/c9pro/c9pro-ex1.mp4",
@@ -111,12 +116,19 @@ export const DocumentationPage: React.FC = () => {
   }
 
   return (
-    <main>      
+    <main>
       <section className="max-w-screen-lg xl:max-w-screen-xl mx-auto bg-black bg-opacity-50">
-        <div className="w-full flex flex-col ml-7 pt-7">
-            <div className="text-2xl sm:text-3xl font-extrabold text-white  inline-block pb-2">
-              LEFT ARROW
-            </div>
+        <div className="sticky top-0 z-10 bg-black bg-opacity-50 w-full flex flex-col pt-7">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 group w-max hover:underline focus:outline-none ml-7">
+            <span className="group-hover:underline decoration-blue-400 underline-offset-4">
+              <ArrowLeftIcon className="h-7 w-7 text-white" />
+            </span>
+            <span className="text-2xl sm:text-3xl font-extrabold text-white pb-2 group-hover:underline decoration-blue-400 underline-offset-4">
+              뒤로가기
+            </span>
+          </Link>
         </div>
         {modalContents[index]()}
       </section>
