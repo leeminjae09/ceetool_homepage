@@ -9,6 +9,8 @@ interface ProjectDetailsProps {
   images: string[];
   initialImage?: string;
   videoThumb?: string;
+  url?: string;
+  linkLabel?: string;
 }
 
 export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
@@ -17,6 +19,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
   images,
   initialImage,
   videoThumb,
+  url,
 }) => {
   const [selectedImage, setSelectedImage] = useState<string>(initialImage ?? images[0]);
 
@@ -24,8 +27,27 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({
     <div className="w-full flex flex-col">
       {/* Title */}
       {title && (
-        <div className="w-full py-6 px-4 sm:py-10 sm:px-8">
-          <div className="text-2xl sm:text-3xl font-extrabold text-white mb-2 border-b-4 border-blue-500 inline-block pb-2">{title}</div>
+        <div className="w-full py-6 px-4 sm:py-10 sm:px-8 flex items-center gap-3">
+          <div className="text-2xl sm:text-3xl font-extrabold text-white mb-2 border-b-4 border-blue-500 inline-block pb-2">
+            {title}
+          </div>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-0 flex items-center text-blue-400 hover:underline transition">
+              {url && (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 flex items-center gap-1 text-blue-400 hover:underline transition break-all">
+                  <span className="break-all">{url}</span>
+                </a>
+              )}
+            </a>
+          )}
         </div>
       )}
       {/* Content Row */}
