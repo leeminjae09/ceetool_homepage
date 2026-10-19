@@ -37,9 +37,27 @@ npm run preview
 - [프로젝트 상세 화면](src/components/ProjectPage.tsx): `/docs/:docType` 경로의 프로젝트 소개
 - [프로젝트 갤러리](src/components/organisms/project-details/project-details.tsx): 사진·영상 표시
 - [전역 스타일](src/index.css), [Tailwind 설정](tailwind.config.js): 배경과 공통 스타일
-- [정적 파일](public): `logos`의 로고, `images/projects`의 프로젝트 사진·영상, 파비콘, 웹 매니페스트
+- [정적 파일](public): `logos`의 로고, 프로젝트 미디어의 기존 원본, 파비콘, 웹 매니페스트
 
 텔레그램 연락처는 표시하지 않습니다. 프로젝트 수행 이력의 텔레그램 알림 기능 설명은 유지합니다.
+
+## 프로젝트 사진·영상
+
+프로젝트 상세 화면의 사진, 영상, 썸네일은 비공개 S3 버킷 `ceetool-image`를
+원본으로 하는 CloudFront 배포에서 제공합니다.
+
+- 미디어 기본 주소: `https://d2fgd6q9oovwa9.cloudfront.net/projects`
+- S3 객체 키 예시: `projects/c9pro/c9pro-ex1.mp4` (`images/` 접두사 없음)
+- S3 리전: 서울 (`ap-northeast-2`)
+- S3 퍼블릭 액세스는 차단하고 CloudFront OAC로 읽기 허용
+
+미디어를 추가할 때 S3의 `projects/프로젝트명/` 아래에 업로드하고
+[프로젝트 상세 화면](src/components/ProjectPage.tsx)의 경로에 반영합니다.
+CloudFront 도메인을 변경하면 같은 파일의 `mediaBaseUrl`을 수정합니다.
+로고와 공유 이미지는 계속 홈페이지 서버에서 제공합니다.
+기존 로컬 미디어 파일은 보존하지만 화면에서 자동 대체 파일로 사용하지 않습니다.
+동일한 객체 키를 덮어쓰면 캐시가 남을 수 있으므로 새 파일명을 사용하거나
+CloudFront에서 해당 경로를 무효화합니다.
 
 ## 검색 및 공유 정보
 

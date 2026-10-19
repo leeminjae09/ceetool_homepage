@@ -4,6 +4,8 @@ import { useParams,} from "react-router-dom";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { Link } from "react-router-dom";
 
+const mediaBaseUrl = "https://d2fgd6q9oovwa9.cloudfront.net/projects";
+
 // Data arrays (same as before)
 const modalHeaders = [
   "NFT Market",
@@ -23,11 +25,11 @@ const modalDescriptions = [
 ];
 const thumbnails = [
   [
-    "/images/projects/dswar/one-ex.png",
-    "/images/projects/dswar/two-ex.png",
-    "/images/projects/dswar/three-ex.png",
-    "/images/projects/dswar/shini-ex.png",
-    "/images/projects/dswar/dswar-ex.png"
+    `${mediaBaseUrl}/dswar/one-ex.png`,
+    `${mediaBaseUrl}/dswar/two-ex.png`,
+    `${mediaBaseUrl}/dswar/three-ex.png`,
+    `${mediaBaseUrl}/dswar/shini-ex.png`,
+    `${mediaBaseUrl}/dswar/dswar-ex.png`
   ],
   [],
   [],
@@ -54,7 +56,7 @@ const modalContents = [
         url="(https://dswmarket.devwlt.org)"
         description={modalDescriptions[0]}
         images={thumbnails[0]}
-        initialImage="/images/projects/dswar/dswar-ex.png"
+        initialImage={`${mediaBaseUrl}/dswar/dswar-ex.png`}
       />
       <ProjectDetails
         title="SHINI Homepage"
@@ -63,12 +65,12 @@ const modalContents = [
 The company offers professional cleaning services, emphasizing quick response and high-quality work performed by trained staff.
 Customers can conveniently book their services through KakaoTalk or the website."
         images={[
-          "/images/projects/shini/shini-ex4.mp4",
-          "/images/projects/shini/shini-ex2.jpg",
-          "/images/projects/shini/shini-ex3.jpg"
+          `${mediaBaseUrl}/shini/shini-ex4.mp4`,
+          `${mediaBaseUrl}/shini/shini-ex2.jpg`,
+          `${mediaBaseUrl}/shini/shini-ex3.jpg`
         ]}
-        initialImage="/images/projects/shini/shini-ex4.mp4"
-        videoThumb="/images/projects/shini/shini-ex1.jpg"
+        initialImage={`${mediaBaseUrl}/shini/shini-ex4.mp4`}
+        videoThumb={`${mediaBaseUrl}/shini/shini-ex1.jpg`}
       />
     </>
   ),
@@ -79,13 +81,13 @@ Customers can conveniently book their services through KakaoTalk or the website.
         url="https://c9-pro.com"
         description={modalDescriptions[1]}
         images={[
-          "/images/projects/c9pro/c9pro-ex1.mp4",
-          "/images/projects/c9pro/c9pro-ex2.png",
-          "/images/projects/c9pro/c9pro-ex3.png",
-          "/images/projects/c9pro/c9pro-ex4.png"
+          `${mediaBaseUrl}/c9pro/c9pro-ex1.mp4`,
+          `${mediaBaseUrl}/c9pro/c9pro-ex2.png`,
+          `${mediaBaseUrl}/c9pro/c9pro-ex3.png`,
+          `${mediaBaseUrl}/c9pro/c9pro-ex4.png`
         ]}
-        initialImage="/images/projects/c9pro/c9pro-ex1.mp4"
-        videoThumb="/images/projects/c9pro/c9pro-ex5.png"
+        initialImage={`${mediaBaseUrl}/c9pro/c9pro-ex1.mp4`}
+        videoThumb={`${mediaBaseUrl}/c9pro/c9pro-ex5.png`}
       />
     </>
   ),
