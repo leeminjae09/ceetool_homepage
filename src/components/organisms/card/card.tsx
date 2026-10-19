@@ -16,36 +16,27 @@ export interface CardProps
       titleId?: string | undefined;
     } & RefAttributes<SVGSVGElement>
   >;
-  href: string;
+  projects: readonly string[];
 }
 
 const Card = forwardRef<HTMLDivElement, CardProps>(
-  ({ title, description, Icon, href, ...rest }, ref) => {
+  ({ title, description, Icon, projects, ...rest }, ref) => {
     return (
       <div
         ref={ref}
-        className="bg-white bg-opacity-5 rounded-md shadow p-4 relative overflow-hidden h-full"
+        className="bg-gray-800 border border-gray-700 p-6 rounded-lg text-white flex flex-col gap-3 min-h-[280px]"
         {...rest}
       >
-        <div>
-          <span className="absolute right-3 bottom-3 flex items-center justify-center rounded-md opacity-10">
-            <Icon className="h-12 w-12 text-white" aria-hidden="true" />
-          </span>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-xl font-bold text-blue-400">{title}</h2>
+          <Icon className="w-8 h-8 shrink-0 text-gray-400" aria-hidden="true" />
         </div>
-        <div className="flex flex-col h-full">
-          <h3 className="text-2xl font-bold text-blue-500">{title}</h3>
-          <p className="mt-2 text-base text-gray-300 flex-1">{description}</p>
-          <div className="pt-6">
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-white font-bold transition tracking-wide hover:text-blue-400"
-            >
-              Visit documentation →
-            </a>
-          </div>
-        </div>
+        <p className="text-sm leading-relaxed text-gray-300">{description}</p>
+        <ul className="list-disc pl-5 text-sm leading-relaxed text-gray-400 space-y-1">
+          {projects.map((project) => (
+            <li key={project}>{project}</li>
+          ))}
+        </ul>
       </div>
     );
   }

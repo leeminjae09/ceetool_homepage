@@ -1,14 +1,24 @@
 {
-  "short_name": "Vital",
-  "name": "Starter template for Vite with React (TypeScript). Supports Tailwind with CSS-Modules. Jest and @react/testing-library configured and ready to go. Also ESLint, Prettier, Husky, Commit-lint and Atomic Design for components.",
+  "id": "/",
+  "short_name": "CEETOOL",
+  "name": "씨툴 CEETOOL",
+  "description": "웹·결제·API 맞춤형 개발 서비스와 프로젝트 소개",
+  "lang": "ko",
   "icons": [
     {
-      "src": ".svgfavicon",
-      "sizes": "64x64 32x32 24x24 16x16",
+      "src": "/favicon.ico",
+      "sizes": "16x16",
       "type": "image/x-icon"
+    },
+    {
+      "src": "/ceetool.logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "theme_color": "#111827",
   "background_color": "#111827"
