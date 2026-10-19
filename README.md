@@ -57,16 +57,21 @@ Open Graph와 Twitter 카드 메타데이터를 정의합니다.
 ## 배포
 
 [GitHub Actions 워크플로](.github/workflows/deploy.yml)는 `main` 브랜치 push 또는
-수동 실행 시 운영 서버에 SSH로 접속하여 다음 작업을 수행합니다.
+수동 실행 시 다음 작업을 수행합니다. 운영 배포는 한 번에 하나씩 실행합니다.
 
-1. 서버 소스를 `origin/main`으로 동기화
-2. `npm ci` 및 `npm run build` 실행
-3. PM2의 `ceetool` 프로세스 재시작
-4. Nginx의 정적 파일 접근을 위한 권한 설정
+1. Actions에서 해당 커밋을 체크아웃하고 Node.js 22 설정
+2. `npm ci`, `npm run lint`, `npm run build` 실행
+3. 커밋 해시를 `dist/deployment.txt`에 기록
+4. SCP로 `dist`를 서버의 `/home/ubuntu/ceetool_homepage/dist`에 전송
+5. SSH로 정적 파일 접근 권한 설정
+6. 운영 HTTPS 주소에서 커밋 해시와 HTML을 받아 빌드 결과와 비교
 
-SSH 접속 키는 GitHub Actions의 `SSH_PRIVATE_KEY` 시크릿을 사용합니다.
-Nginx 및 PM2 실행 설정은 이 저장소에 포함되어 있지 않습니다.
-서버에서 직접 수정한 소스는 다음 배포 시 덮어써지므로 저장소에서 수정해야 합니다.
+검사·빌드·전송·운영 확인 중 하나라도 실패하면 배포가 실패로 표시됩니다.
+SSH 접속 키는 기존 GitHub Actions의 `SSH_PRIVATE_KEY` 시크릿을 사용합니다.
+서버의 GitHub 인증, 소스 동기화, Node.js 빌드, PM2 재시작은 필요하지 않습니다.
+기존 Nginx가 `dist`의 정적 파일을 제공하며 Nginx 설정은 저장소에 포함되어 있지 않습니다.
+이전 페이지의 캐시가 참조할 수 있는 해시 기반 에셋은 전송 시 삭제하지 않습니다.
+서버의 정적 파일을 직접 수정하면 다음 배포 시 덮어써지므로 저장소에서 수정해야 합니다.
 
 ## 라이선스
 

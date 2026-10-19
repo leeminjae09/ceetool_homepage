@@ -1,4 +1,3 @@
-# .github/workflows/deploy.yml
 name: CI/CD SSH Deploy
 
 on:
@@ -6,32 +5,75 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Deploy to server via SSH
-        uses: appleboy/ssh-action@master
+      - name: Check out deployment source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build production files
+        run: |
+          npm run build
+          printf '%s\n' "$GITHUB_SHA" > dist/deployment.txt
+
+      - name: Upload production files
+        uses: appleboy/scp-action@v1
+        with:
+          host: 43.202.220.56
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: dist
+          target: /home/ubuntu/ceetool_homepage
+          overwrite: true
+
+      - name: Set static file permissions
+        uses: appleboy/ssh-action@v1.2.2
         with:
           host: 43.202.220.56
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script: |
+            set -eu
             cd /home/ubuntu/ceetool_homepage
+            test -s dist/index.html
+            test "$(cat dist/deployment.txt)" = "${{ github.sha }}"
+            sudo chmod o+rx /home/ubuntu /home/ubuntu/ceetool_homepage
+            sudo chmod -R o+rX dist
 
-            # 최신 코드 동기화
-            git fetch --all
-            git reset --hard origin/main
-
-            # 의존성 설치 및 빌드
-            npm ci
-            npm run build
-
-            # pm2 프로세스 재시작
-            pm2 restart ceetool
-
-            # 퍼미션 자동 부여 (정적 파일 nginx에서 직접 서빙용)
-            sudo chmod o+rx /home/ubuntu
-            sudo chmod o+rx /home/ubuntu/ceetool_homepage
-            sudo chmod -R o+rx /home/ubuntu/ceetool_homepage/dist
+      - name: Verify live deployment
+        env:
+          SITE_URL: https://ceetool.com
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 30 \
+            -H 'Cache-Control: no-cache' \
+            "$SITE_URL/deployment.txt?revision=$GITHUB_SHA" \
+            -o "$RUNNER_TEMP/deployment.txt"
+          diff -u dist/deployment.txt "$RUNNER_TEMP/deployment.txt"
+          curl --fail --silent --show-error --retry 3 --retry-all-errors --max-time 30 \
+            -H 'Cache-Control: no-cache' \
+            "$SITE_URL/?revision=$GITHUB_SHA" \
+            -o "$RUNNER_TEMP/production-index.html"
+          diff -u dist/index.html "$RUNNER_TEMP/production-index.html"
