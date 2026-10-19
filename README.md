@@ -59,6 +59,14 @@ CloudFront 도메인을 변경하면 같은 파일의 `mediaBaseUrl`을 수정�
 동일한 객체 키를 덮어쓰면 캐시가 남을 수 있으므로 새 파일명을 사용하거나
 CloudFront에서 해당 경로를 무효화합니다.
 
+## 인증정보 관리
+
+환경변수 파일, 로컬 접속 설정, 개인키 파일은 `.gitignore`에서 제외합니다.
+`.env.example`에는 실제 비밀 값 없이 설정 이름과 예시만 기록합니다.
+배포용 개인키는 GitHub Actions Secrets의 `SSH_PRIVATE_KEY`로 관리하며,
+소스 코드나 브라우저에 전달되는 `VITE_` 환경변수에 넣지 않습니다.
+이미 커밋된 비밀 값은 `.gitignore`로 제거되지 않으므로 노출 시 폐기·재발급해야 합니다.
+
 ## 검색 및 공유 정보
 
 [HTML 진입 파일](index.html)에 한국어 문서 설정, 검색 설명, canonical,
