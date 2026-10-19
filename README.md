@@ -5,8 +5,8 @@
 
 ## 기술 구성
 
-- React 18, TypeScript, Vite 5
-- Tailwind CSS 3, Heroicons
+- React 18, TypeScript, Vite 5, React Router
+- Tailwind CSS 3, Heroicons, Swiper
 - 별도 백엔드나 데이터베이스 없이 정적 파일로 배포
 
 ## 개발 및 검증
@@ -34,8 +34,10 @@ npm run preview
 - [메인 화면](src/app/app.tsx): 소개 문구, 카카오톡 문의, 사업자 정보
 - [서비스 데이터](src/app/services.ts): 서비스 설명과 프로젝트 목록
 - [서비스 카드](src/components/organisms/card/card.tsx): 카드 레이아웃
+- [프로젝트 상세 화면](src/components/ProjectPage.tsx): `/docs/:docType` 경로의 프로젝트 소개
+- [프로젝트 갤러리](src/components/organisms/project-details/project-details.tsx): 사진·영상 표시
 - [전역 스타일](src/index.css), [Tailwind 설정](tailwind.config.js): 배경과 공통 스타일
-- [정적 파일](public): 로고, 파비콘, 웹 매니페스트
+- [정적 파일](public): `logos`의 로고, `images/projects`의 프로젝트 사진·영상, 파비콘, 웹 매니페스트
 
 텔레그램 연락처는 표시하지 않습니다. 프로젝트 수행 이력의 텔레그램 알림 기능 설명은 유지합니다.
 

@@ -5,6 +5,7 @@ import {
   ForwardRefExoticComponent,
   SVGProps,
 } from "react";
+import { Link } from "react-router-dom";
 
 export interface CardProps
   extends Omit<ComponentProps<"div">, "className" | "children"> {
@@ -17,10 +18,11 @@ export interface CardProps
     } & RefAttributes<SVGSVGElement>
   >;
   projects: readonly string[];
+  href: string;
 }
 
 const Card = forwardRef<HTMLDivElement, CardProps>(
-  ({ title, description, Icon, projects, ...rest }, ref) => {
+  ({ title, description, Icon, projects, href, ...rest }, ref) => {
     return (
       <div
         ref={ref}
@@ -37,6 +39,14 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             <li key={project}>{project}</li>
           ))}
         </ul>
+        <div className="mt-auto pt-3">
+          <Link
+            to={href}
+            className="text-sm font-bold text-white hover:underline"
+          >
+            프로젝트 자세히 보기 →
+          </Link>
+        </div>
       </div>
     );
   }

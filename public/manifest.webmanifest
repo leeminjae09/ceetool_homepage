@@ -11,7 +11,7 @@
       "type": "image/x-icon"
     },
     {
-      "src": "/ceetool.logo.png",
+      "src": "/logos/ceetool.logo.png",
       "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any"

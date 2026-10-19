@@ -11,11 +11,12 @@ import type { CardProps } from "components/organisms/card/card";
 export const services = [
   {
     title: "웹사이트 개발",
+    href: "/docs/nft-market",
     description: "쇼핑몰·어드민 페이지, 서버 이전, 시스템 연동 등 다양한 웹사이트 구축 경험",
     Icon: CodeBracketIcon,
     projects: [
       "DSWAR Market – 쇼핑몰·어드민 페이지 제작",
-      "청담 쇼핑몰 – 서버 이전·파싱 자동화",
+      "신이 홈페이지 – 결제 및 예약 관리시스템 개발",
       "주다스 글로벌 쇼핑몰 – 페이버스 결제 취소 API 개발",
       "스카이젯 – 비동기화 전환·통합결제 모듈 연동",
       "크리에이티브코드 – HTS 복구·차트 API 연동",
@@ -24,6 +25,7 @@ export const services = [
   },
   {
     title: "결제 연동",
+    href: "/docs/payment-integration",
     description: "신용카드, USDT, PayPal 등 다양한 결제 수단 통합 및 WooCommerce 연동",
     Icon: CreditCardIcon,
     projects: [
@@ -35,6 +37,7 @@ export const services = [
   },
   {
     title: "코인 개발",
+    href: "/docs/coin-development",
     description: "메인넷 구축, 거래소 연동, 코인 전송 및 SWAP API 개발 등 블록체인 기반 시스템",
     Icon: BanknotesIcon,
     projects: [
@@ -46,6 +49,7 @@ export const services = [
   },
   {
     title: "API·플랫폼",
+    href: "/docs/api-platform",
     description: "ERP, 공공기관 API, 내부 플랫폼 등 다양한 B2B API 및 플랫폼 개발 경험",
     Icon: ServerStackIcon,
     projects: [
@@ -57,6 +61,7 @@ export const services = [
   },
   {
     title: "데이터 분석",
+    href: "/docs/data-analysis",
     description: "금융 데이터 수집, 오픈 API 연구, 데이터 기반 의사결정 지원 분석툴",
     Icon: ChartBarIcon,
     projects: [
@@ -67,6 +72,7 @@ export const services = [
   },
   {
     title: "툴·자동화",
+    href: "/docs/automation-tools",
     description: "업로드 툴, FTP 자동화, 알림 시스템 등 운영을 위한 다양한 자동화 도구 개발",
     Icon: Cog6ToothIcon,
     projects: [
