@@ -33,8 +33,10 @@ npm run preview
 
 - [메인 화면](src/app/app.tsx): 소개 문구, 카카오톡 문의, 사업자 정보
 - [서비스 데이터](src/app/services.ts): 서비스 설명과 프로젝트 목록
+- [포트폴리오 데이터](src/app/portfolio.ts): DSWAR·신이·C9Pro의 외부 주소와 사진·영상
 - [서비스 카드](src/components/organisms/card/card.tsx): 카드 레이아웃
-- [프로젝트 상세 화면](src/components/ProjectPage.tsx): 6개 `/docs/:docType` 경로의 소개와 갤러리 데이터
+- [프로젝트 미리보기](src/components/ProjectDialog.tsx): PC 모달 및 모바일 전체 화면
+- [기존 상세 화면](src/components/ProjectPage.tsx): 6개 `/docs/:docType` 직접 접속 경로 유지
 - [프로젝트 갤러리](src/components/organisms/project-details/project-details.tsx): 사진·영상 표시
 - [전역 스타일](src/index.css), [Tailwind 설정](tailwind.config.js): 배경과 공통 스타일
 - [정적 파일](public): `logos`의 로고, 프로젝트 미디어의 기존 원본, 파비콘, 웹 매니페스트
@@ -43,7 +45,7 @@ npm run preview
 
 ## 프로젝트 사진·영상
 
-프로젝트 상세 화면의 사진, 영상, 썸네일은 비공개 S3 버킷 `ceetool-image`를
+프로젝트 미리보기와 기존 상세 화면의 사진, 영상, 썸네일은 비공개 S3 버킷 `ceetool-image`를
 원본으로 하는 CloudFront 배포에서 제공합니다.
 
 - 미디어 기본 주소: `https://d2fgd6q9oovwa9.cloudfront.net/projects`
@@ -52,15 +54,21 @@ npm run preview
 - S3 퍼블릭 액세스는 차단하고 CloudFront OAC로 읽기 허용
 
 미디어를 추가할 때 S3의 `projects/프로젝트명/` 아래에 업로드하고
-[프로젝트 상세 화면](src/components/ProjectPage.tsx)의 경로에 반영합니다.
+[포트폴리오 데이터](src/app/portfolio.ts)의 경로에 반영합니다.
 CloudFront 도메인을 변경하면 같은 파일의 `mediaBaseUrl`을 수정합니다.
 로고와 공유 이미지는 계속 홈페이지 서버에서 제공합니다.
 기존 로컬 미디어 파일은 보존하지만 화면에서 자동 대체 파일로 사용하지 않습니다.
 동일한 객체 키를 덮어쓰면 캐시가 남을 수 있으므로 새 파일명을 사용하거나
 CloudFront에서 해당 경로를 무효화합니다.
 
-상세 페이지의 소개와 수행 이력은 기존 서비스 데이터를 기반으로 표시합니다.
-공개 미디어가 있는 웹사이트·결제 연동 분야에는 프로젝트 갤러리도 표시합니다.
+홈페이지의 프로젝트 이름을 누르면 페이지 이동 없이 상세 보기가 열립니다.
+현재 자료가 있는 DSWAR·신이·C9Pro에만 미리보기와 외부 사이트 링크를 제공합니다.
+다른 프로젝트는 기존 설명을 유지하고, 분야별 "프로젝트 자세히 보기" 버튼은 표시하지 않습니다.
+768px 미만에서는 전체 화면, 그 이상에서는 중앙 모달로 표시합니다.
+닫기 버튼이나 Escape로 닫으면 목록 위치와 초점을 복원하고 영상 재생을 중단합니다.
+PC에서는 배경 클릭으로도 닫을 수 있습니다.
+기존 `/docs/:docType` 주소는 호환성을 위해 유지하며 같은 포트폴리오 데이터를 사용합니다.
+
 갤러리의 `media`는 비어 있지 않은 배열이며, 사진은 `type`, `src`, `alt`,
 영상은 여기에 `poster`를 추가합니다.
 영상은 자동재생하지 않고 포스터를 먼저 표시하며 `preload="none"`으로

@@ -1,11 +1,10 @@
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { Link, useParams } from "react-router-dom";
 import { services } from "app/services";
+import { portfolioProjects } from "app/portfolio";
 import ProjectDetails, {
   type ProjectDetailsProps,
 } from "./organisms/project-details/project-details";
-
-const mediaBaseUrl = "https://d2fgd6q9oovwa9.cloudfront.net/projects";
 
 interface ServiceDetails {
   description: string;
@@ -16,100 +15,12 @@ const serviceDetails: Record<string, ServiceDetails> = {
   "/docs/nft-market": {
     description:
       "쇼핑몰과 어드민 페이지 제작부터 결제·예약 관리, 서버 이전과 시스템 연동까지 웹서비스 구축에 필요한 작업을 수행합니다. 아래에서 DSWAR Market과 신이 홈페이지의 화면을 확인할 수 있습니다.",
-    showcases: [
-      {
-        title: "DSWAR Market",
-        url: "https://dswmarket.devwlt.org",
-        description:
-          "DSWAR Market의 쇼핑몰·어드민 페이지 제작 사례입니다. 공개 화면은 DS.WAR LAND ITEM 사전 판매 샘플로, USDT 또는 럭키박스 토큰을 이용한 아이템 구매 흐름을 보여줍니다.",
-        media: [
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/dswar/dswar-ex.png`,
-            alt: "DSWAR Market 전체 화면",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/dswar/one-ex.png`,
-            alt: "DSWAR Market 아이템 화면 1",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/dswar/two-ex.png`,
-            alt: "DSWAR Market 아이템 화면 2",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/dswar/three-ex.png`,
-            alt: "DSWAR Market 아이템 화면 3",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/dswar/shini-ex.png`,
-            alt: "웹사이트 제작 참고 화면",
-          },
-        ],
-      },
-      {
-        title: "신이 홈페이지",
-        url: "https://xn--zv4bu7f.com/",
-        description:
-          "청소 서비스 홈페이지의 결제 및 예약 관리시스템 개발 사례입니다. 서비스 소개 화면과 예약 흐름을 사진과 시연 영상으로 확인할 수 있습니다.",
-        media: [
-          {
-            type: "video",
-            src: `${mediaBaseUrl}/shini/shini-ex4.mp4`,
-            poster: `${mediaBaseUrl}/shini/shini-ex1.jpg`,
-            alt: "신이 홈페이지 시연 영상",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/shini/shini-ex2.jpg`,
-            alt: "신이 홈페이지 소개 화면",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/shini/shini-ex3.jpg`,
-            alt: "신이 홈페이지 상세 화면",
-          },
-        ],
-      },
-    ],
+    showcases: [portfolioProjects.dswar, portfolioProjects.shini],
   },
   "/docs/payment-integration": {
     description:
       "카드·USDT·PayPal 등 결제 수단과 멤버십 연동, WooCommerce 결제 플러그인 및 PG 연동을 수행합니다. C9Pro 시연 화면에서는 결제 연동 프로젝트의 화면 구성을 확인할 수 있습니다.",
-    showcases: [
-      {
-        title: "C9Pro",
-        url: "https://c9-pro.com",
-        description:
-          "카드·USDT·PayPal 결제와 멤버십 연동을 수행한 프로젝트입니다. 아래 시연 영상과 화면 이미지를 통해 프로젝트의 화면 구성을 확인할 수 있습니다.",
-        media: [
-          {
-            type: "video",
-            src: `${mediaBaseUrl}/c9pro/c9pro-ex1.mp4`,
-            poster: `${mediaBaseUrl}/c9pro/c9pro-ex5.png`,
-            alt: "C9Pro 시연 영상",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/c9pro/c9pro-ex2.png`,
-            alt: "C9Pro 화면 1",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/c9pro/c9pro-ex3.png`,
-            alt: "C9Pro 화면 2",
-          },
-          {
-            type: "image",
-            src: `${mediaBaseUrl}/c9pro/c9pro-ex4.png`,
-            alt: "C9Pro 화면 3",
-          },
-        ],
-      },
-    ],
+    showcases: [portfolioProjects.c9pro],
   },
   "/docs/coin-development": {
     description:
@@ -191,7 +102,9 @@ export const DocumentationPage = () => {
           </h2>
           <ul className="mt-4 list-disc pl-5 text-gray-300 space-y-3 leading-relaxed">
             {service.projects.map((project) => (
-              <li key={project}>{project}</li>
+              <li key={project.name}>
+                {project.name} – {project.description}
+              </li>
             ))}
           </ul>
         </section>
