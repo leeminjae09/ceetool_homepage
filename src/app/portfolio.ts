@@ -6,8 +6,7 @@ export const portfolioProjects = {
   dswar: {
     title: "DSWAR Market",
     url: "https://dswstore.io/",
-    description:
-      "DSWAR Market의 쇼핑몰·어드민 페이지 제작 사례입니다. 공개 화면은 DS.WAR LAND ITEM 사전 판매 샘플로, USDT 또는 럭키박스 토큰을 이용한 아이템 구매 흐름을 보여줍니다.",
+    description: "USDT·럭키박스 토큰으로 게임 아이템을 구매하는 쇼핑몰.",
     media: [
       {
         type: "image",
@@ -39,8 +38,7 @@ export const portfolioProjects = {
   shini: {
     title: "신이 홈페이지",
     url: "https://xn--zv4bu7f.com/",
-    description:
-      "청소 서비스 홈페이지의 결제 및 예약 관리시스템 개발 사례입니다. 서비스 소개 화면과 예약 흐름을 사진과 시연 영상으로 확인할 수 있습니다.",
+    description: "청소 서비스 예약·결제 및 예약 관리.",
     media: [
       {
         type: "video",
@@ -63,8 +61,7 @@ export const portfolioProjects = {
   c9pro: {
     title: "C9Pro",
     url: "https://c9-pro.com/",
-    description:
-      "카드·USDT·PayPal 결제와 멤버십 연동을 수행한 프로젝트입니다. 아래 시연 영상과 화면 이미지를 통해 프로젝트의 화면 구성을 확인할 수 있습니다.",
+    description: "카드·USDT·PayPal 결제와 멤버십 연동.",
     media: [
       {
         type: "video",

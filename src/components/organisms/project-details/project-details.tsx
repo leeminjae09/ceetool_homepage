@@ -29,18 +29,18 @@ export const ProjectDetails = ({
 
   return (
     <article className="min-w-0 rounded-xl border border-gray-700 bg-gray-900 p-4 sm:p-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-2xl sm:text-3xl font-bold text-white">{title}</h2>
+      <header className="mb-6 flex flex-wrap items-center gap-3">
+        <h2 className="text-xl font-bold text-white sm:text-3xl">{title}</h2>
         {url && (
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`${title} 사이트 방문 (새 창)`}
-            className="inline-flex items-center gap-2 rounded text-blue-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+            className="inline-flex items-center gap-1 rounded text-sm text-blue-400 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
           >
             사이트 방문
-            <ArrowTopRightOnSquareIcon className="h-5 w-5" aria-hidden="true" />
+            <ArrowTopRightOnSquareIcon className="h-4 w-4" aria-hidden="true" />
           </a>
         )}
       </header>
@@ -138,12 +138,7 @@ export const ProjectDetails = ({
             })}
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-            <p className="text-gray-400">
-              {selectedMedia.type === "video"
-                ? "재생 버튼을 누르면 영상이 시작됩니다."
-                : "작은 이미지를 선택하면 크게 볼 수 있습니다."}
-            </p>
+          <div className="mt-3 text-sm">
             <a
               href={selectedMedia.src}
               target="_blank"
