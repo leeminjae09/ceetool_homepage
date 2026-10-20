@@ -6,7 +6,7 @@
 ## 기술 구성
 
 - React 18, TypeScript, Vite 5, React Router
-- Tailwind CSS 3, Heroicons, Swiper
+- Tailwind CSS 3, Heroicons
 - 별도 백엔드나 데이터베이스 없이 정적 파일로 배포
 
 ## 개발 및 검증
@@ -34,7 +34,7 @@ npm run preview
 - [메인 화면](src/app/app.tsx): 소개 문구, 카카오톡 문의, 사업자 정보
 - [서비스 데이터](src/app/services.ts): 서비스 설명과 프로젝트 목록
 - [서비스 카드](src/components/organisms/card/card.tsx): 카드 레이아웃
-- [프로젝트 상세 화면](src/components/ProjectPage.tsx): `/docs/:docType` 경로의 프로젝트 소개
+- [프로젝트 상세 화면](src/components/ProjectPage.tsx): 6개 `/docs/:docType` 경로의 소개와 갤러리 데이터
 - [프로젝트 갤러리](src/components/organisms/project-details/project-details.tsx): 사진·영상 표시
 - [전역 스타일](src/index.css), [Tailwind 설정](tailwind.config.js): 배경과 공통 스타일
 - [정적 파일](public): `logos`의 로고, 프로젝트 미디어의 기존 원본, 파비콘, 웹 매니페스트
@@ -58,6 +58,15 @@ CloudFront 도메인을 변경하면 같은 파일의 `mediaBaseUrl`을 수정�
 기존 로컬 미디어 파일은 보존하지만 화면에서 자동 대체 파일로 사용하지 않습니다.
 동일한 객체 키를 덮어쓰면 캐시가 남을 수 있으므로 새 파일명을 사용하거나
 CloudFront에서 해당 경로를 무효화합니다.
+
+상세 페이지의 소개와 수행 이력은 기존 서비스 데이터를 기반으로 표시합니다.
+공개 미디어가 있는 웹사이트·결제 연동 분야에는 프로젝트 갤러리도 표시합니다.
+갤러리의 `media`는 비어 있지 않은 배열이며, 사진은 `type`, `src`, `alt`,
+영상은 여기에 `poster`를 추가합니다.
+영상은 자동재생하지 않고 포스터를 먼저 표시하며 `preload="none"`으로
+사용자가 재생하기 전의 영상 데이터 다운로드를 줄입니다.
+사진은 지연 로딩하고, 썸네일은 키보드로 선택할 수 있는 가로 스크롤 버튼으로 제공합니다.
+미디어를 불러오지 못하면 오류 안내와 다시 시도 버튼을 표시합니다.
 
 ## 인증정보 관리
 
