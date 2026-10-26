@@ -1,6 +1,6 @@
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { Link, useParams } from "react-router-dom";
-import { services } from "app/services";
+import { legacyServices } from "app/services";
 import { portfolioProjects } from "app/portfolio";
 import ProjectDetails, {
   type ProjectDetailsProps,
@@ -42,7 +42,9 @@ const serviceDetails: Record<string, ServiceDetails> = {
 
 export const DocumentationPage = () => {
   const { docType } = useParams<{ docType: string }>();
-  const service = services.find(({ href }) => href === `/docs/${docType}`);
+  const service = legacyServices.find(
+    ({ href }) => href === `/docs/${docType}`,
+  );
 
   if (!service) {
     return (

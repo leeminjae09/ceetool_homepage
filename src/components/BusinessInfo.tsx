@@ -1,4 +1,10 @@
-export default function BusinessInfo({ className }: { className: string }) {
+export default function BusinessInfo({
+  className,
+  showAdminLink = false,
+}: {
+  className: string;
+  showAdminLink?: boolean;
+}) {
   return (
     <footer className={className}>
       <p>
@@ -21,6 +27,16 @@ export default function BusinessInfo({ className }: { className: string }) {
           </a>
         </span>
       </p>
+      {showAdminLink && (
+        <p className="pt-3">
+          <a
+            href="/admin/payments"
+            className="inline-flex min-h-11 items-center rounded text-xs font-normal text-gray-400 hover:text-gray-200 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+          >
+            관리자
+          </a>
+        </p>
+      )}
     </footer>
   );
 }

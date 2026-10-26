@@ -5,6 +5,9 @@ import {
   ServerStackIcon,
   ChartBarIcon,
   Cog6ToothIcon,
+  ShoppingBagIcon,
+  ChatBubbleLeftRightIcon,
+  MegaphoneIcon,
 } from "@heroicons/react/24/outline";
 import type { PortfolioProjectId } from "app/portfolio";
 
@@ -14,7 +17,7 @@ export interface ServiceProject {
   portfolioId?: PortfolioProjectId;
 }
 
-export interface Service {
+interface LegacyService {
   title: string;
   href: string;
   description: string;
@@ -22,7 +25,7 @@ export interface Service {
   projects: readonly ServiceProject[];
 }
 
-export const services: Service[] = [
+export const legacyServices = [
   {
     title: "웹사이트 개발",
     href: "/docs/nft-market",
@@ -114,6 +117,130 @@ export const services: Service[] = [
       { name: "플리키", description: "상품 자동업로드·워터마크" },
       { name: "SayHello", description: "FTP API + 콘솔 툴" },
       { name: "MD AUTO", description: "퍼블리싱 + 텔레그램 알림" },
+    ],
+  },
+] as const satisfies readonly LegacyService[];
+
+export interface Service {
+  title: string;
+  description: string;
+  Icon: LegacyService["Icon"];
+  features: readonly string[];
+  projects: readonly ServiceProject[];
+  featured?: boolean;
+  projectLabel?: string;
+}
+
+const [web, payments, blockchain, api, data, automation] = legacyServices;
+
+export const additionalProjects = blockchain.projects;
+
+export const services: readonly Service[] = [
+  {
+    title: "쇼핑몰 구축·커스터마이징",
+    description:
+      "자사몰 제작부터 카페24·WooCommerce 기능 추가, 주문·재고·배송 연동까지.",
+    Icon: ShoppingBagIcon,
+    featured: true,
+    features: [
+      "자사몰 맞춤 개발",
+      "카페24·WooCommerce 커스터마이징",
+      "상품·주문·배송 시스템 연동",
+    ],
+    projects: [web.projects[0]],
+  },
+  {
+    title: "결제 시스템 연동",
+    description:
+      "새로운 결제 수단을 연결하고 승인·취소·환불 흐름을 구현합니다.",
+    Icon: CreditCardIcon,
+    features: [
+      "국내 카드·해외 결제",
+      "결제 링크·정기결제",
+      "취소·부분취소·결제 오류 개선",
+    ],
+    projects: [
+      payments.projects[0],
+      payments.projects[1],
+      web.projects[2],
+      web.projects[3],
+      payments.projects[3],
+    ],
+  },
+  {
+    title: "AI 연동·상담 챗봇",
+    description:
+      "기존 서비스에 AI를 연결해 상담과 문서 처리에 필요한 기능을 만듭니다.",
+    Icon: ChatBubbleLeftRightIcon,
+    features: [
+      "상품·서비스 상담 챗봇",
+      "내부 문서 검색·답변",
+      "문서 요약·분류 자동화",
+    ],
+    projectLabel: "수행 분야",
+    projects: [
+      { name: "AI 챗봇 연동", description: "AI를 활용한 챗봇 연동 개발" },
+    ],
+  },
+  {
+    title: "마케팅·SNS 연동 개발",
+    description:
+      "메타·인스타그램과 서비스를 연결해 채널 운영과 성과 확인을 돕습니다.",
+    Icon: MegaphoneIcon,
+    features: [
+      "광고 전환 측정 연동",
+      "SNS 콘텐츠·고객 문의 연동",
+      "마케팅 데이터·보고서",
+    ],
+    projectLabel: "수행 분야",
+    projects: [
+      {
+        name: "메타·인스타그램 마케팅",
+        description: "SNS 마케팅 관련 기능 개발",
+      },
+    ],
+  },
+  {
+    title: "업무 자동화·맞춤 시스템",
+    description:
+      "예약·정산부터 반복 작업까지, 실제 업무 방식에 맞는 화면과 도구를 만듭니다.",
+    Icon: Cog6ToothIcon,
+    features: [
+      "예약·견적·발주·정산 관리",
+      "엑셀·PDF·상품 일괄 처리",
+      "관리자 화면·알림·운영 도구",
+    ],
+    projects: [
+      web.projects[1],
+      automation.projects[0],
+      automation.projects[1],
+      api.projects[2],
+      automation.projects[2],
+      api.projects[0],
+      {
+        name: "골프 스코어·정산 도구",
+        description: "플레이어별 점수·정산 계산",
+      },
+    ],
+  },
+  {
+    title: "금융·공공 시스템 개발",
+    description:
+      "은행·금융 API와 기관 업무 시스템을 연결하고 거래·업무 데이터를 처리합니다.",
+    Icon: ServerStackIcon,
+    features: [
+      "은행·금융 API 연동",
+      "기관 업무 시스템·데이터 이관",
+      "거래 데이터 수집·시스템 통합",
+    ],
+    projects: [
+      { name: "은행 API 연동", description: "은행 연동 관련 업무 개발" },
+      web.projects[5],
+      web.projects[4],
+      payments.projects[2],
+      api.projects[1],
+      api.projects[3],
+      ...data.projects,
     ],
   },
 ];
