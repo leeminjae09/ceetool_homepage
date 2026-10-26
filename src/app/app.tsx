@@ -5,6 +5,12 @@ import ProjectDialog from "components/ProjectDialog";
 import Card from "components/organisms/card";
 import { services } from "app/services";
 import { portfolioProjects, type PortfolioProjectId } from "app/portfolio";
+import BusinessInfo from "components/BusinessInfo";
+import {
+  PaymentAdminPage,
+  PaymentPage,
+  PaymentResultPage,
+} from "components/PaymentPages";
 
 function Home() {
   const [selectedProject, setSelectedProject] =
@@ -77,28 +83,7 @@ function Home() {
           />
         ))}
       </section>
-      <footer className="pb-16 max-w-screen-lg xl:max-w-screen-xl mx-auto text-center text-gray-400 font-bold text-sm leading-relaxed space-y-1">
-        <p>
-          씨툴(CEETOOL) | 업태: 정보통신업
-          <br className="block sm:hidden" />
-          <span className="hidden sm:inline"> | </span>
-          <span>사업자등록번호: 886-12-02119</span>
-        </p>
-        <p>경기도 성남시 수정구 복정로72번길 10, 401호 (복정동)</p>
-        <p>
-          <span className="block sm:inline">전화번호: 010-2195-6202</span>
-          <span className="hidden sm:inline"> | </span>
-          <span className="block sm:inline">
-            이메일:{" "}
-            <a
-              href="mailto:john@ceetool.com"
-              className="text-blue-500 hover:underline font-semibold"
-            >
-              john@ceetool.com
-            </a>
-          </span>
-        </p>
-      </footer>
+      <BusinessInfo className="pb-16 max-w-screen-lg xl:max-w-screen-xl mx-auto text-center text-gray-400 font-bold text-sm leading-relaxed space-y-1" />
       {selectedProject && (
         <ProjectDialog
           key={selectedProject}
@@ -116,6 +101,9 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/docs/:docType" element={<DocumentationPage />} />
+        <Route path="/pay/:token" element={<PaymentPage />} />
+        <Route path="/pay/:token/result" element={<PaymentResultPage />} />
+        <Route path="/admin/payments" element={<PaymentAdminPage />} />
       </Routes>
     </BrowserRouter>
   );

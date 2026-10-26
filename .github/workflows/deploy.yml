@@ -32,10 +32,23 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Install and verify payment server
+        run: |
+          npm ci --prefix server --ignore-scripts
+          npm --prefix server run check
+          npm --prefix server test
+
       - name: Build production files
         run: |
           npm run build
           printf '%s\n' "$GITHUB_SHA" > dist/deployment.txt
+
+      - name: Package isolated payment runtime
+        run: |
+          mkdir -p "$RUNNER_TEMP/payments-release/runtime" "$RUNNER_TEMP/payments-release/server"
+          cp "$(command -v node)" "$RUNNER_TEMP/payments-release/runtime/node"
+          cp -a server/src server/deploy server/node_modules server/package.json server/package-lock.json server/.env.example "$RUNNER_TEMP/payments-release/server/"
+          tar -czf payments-release.tar.gz -C "$RUNNER_TEMP/payments-release" .
 
       - name: Upload production files
         uses: appleboy/scp-action@v1
@@ -44,7 +57,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          source: dist
+          source: dist,payments-release.tar.gz
           target: /home/ubuntu/ceetool_homepage
           overwrite: true
 
@@ -63,6 +76,22 @@ jobs:
             sudo chmod o+rx /home/ubuntu /home/ubuntu/ceetool_homepage
             sudo chmod -R o+rX dist
 
+      - name: Deploy payment server and scoped Nginx routes
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 43.202.220.56
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          command_timeout: 8m
+          script: |
+            set -eu
+            release=/home/ubuntu/ceetool-payments/releases/${{ github.sha }}
+            mkdir -p "$release"
+            tar -xzf /home/ubuntu/ceetool_homepage/payments-release.tar.gz -C "$release" --no-same-owner
+            bash "$release/server/deploy/deploy.sh" "${{ github.sha }}"
+            rm /home/ubuntu/ceetool_homepage/payments-release.tar.gz
+
       - name: Verify live deployment
         env:
           SITE_URL: https://ceetool.com
@@ -77,3 +106,9 @@ jobs:
             "$SITE_URL/?revision=$GITHUB_SHA" \
             -o "$RUNNER_TEMP/production-index.html"
           diff -u dist/index.html "$RUNNER_TEMP/production-index.html"
+          curl --fail --silent --show-error --retry 3 --max-time 10 \
+            "$SITE_URL/api/payments/health" -o "$RUNNER_TEMP/payments-health.json"
+          node -e 'const h = require(process.argv[1]); if (h.ok !== true) process.exit(1); console.log("Payment service configuration:", h);' "$RUNNER_TEMP/payments-health.json"
+          curl --fail --silent --show-error --max-time 10 "$SITE_URL/admin/payments" \
+            -o "$RUNNER_TEMP/payments-page.html"
+          diff -u dist/index.html "$RUNNER_TEMP/payments-page.html"

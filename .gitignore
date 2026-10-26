@@ -19,3 +19,9 @@ id_rsa
 id_dsa
 id_ecdsa
 id_ed25519
+
+server/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+payments-release.tar.gz

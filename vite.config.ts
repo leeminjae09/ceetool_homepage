@@ -7,6 +7,9 @@ export default defineConfig(() => {
     plugins: [react()],
     server: {
       port: 3000,
+      proxy: {
+        "/api/payments": "http://127.0.0.1:3001",
+      },
     },
     resolve: {
       alias: {

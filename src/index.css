@@ -8,6 +8,12 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  main.payment-page {
+    @apply space-y-0 px-4 py-8;
+    background-image: none;
+    animation: none;
+  }
+
   @keyframes slide {
     100% {
       background-position:

@@ -1,0 +1,21 @@
+{
+  "name": "ceetool-payments",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check src/index.mjs && node --check src/app.mjs && node --check src/paysm.mjs && node --check src/database.mjs && node --check src/config.mjs && node --check src/backup.mjs && node --check deploy/install-nginx.mjs"
+  },
+  "dependencies": {
+    "ceetool-homepage": "file:..",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "google-auth-library": "^10.3.0",
+    "helmet": "^8.1.0"
+  }
+}

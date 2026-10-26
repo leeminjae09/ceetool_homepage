@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /pay/
+Disallow: /admin/
+Disallow: /api/payments/
 
 Sitemap: https://ceetool.com/sitemap.xml
