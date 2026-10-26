@@ -65,7 +65,10 @@ export function invoiceView(row, admin = false) {
         ? "expired"
         : row.state,
     paidAt: row.paid_at,
-    note: row.note,
+    note:
+      !admin && row.state === "review"
+        ? "결제 상태를 확인하고 있습니다. 다시 결제하지 말고 담당자에게 문의해 주세요."
+        : row.note,
     ...(admin
       ? {
           createdAt: row.created_at,

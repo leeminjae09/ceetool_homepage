@@ -33,7 +33,7 @@ const statusLabels: Record<PaymentState, string> = {
   expired: "결제 기한 만료",
   processing: "승인 처리 중",
   paid: "결제 완료",
-  review: "관리자 확인 중",
+  review: "결제 확인 중",
 };
 const won = (amount: number) => `${amount.toLocaleString("ko-KR")}원`;
 const date = (value: number) => new Date(value).toLocaleString("ko-KR");
@@ -242,7 +242,7 @@ function PaymentFrame({
       <iframe
         ref={frameRef}
         name="ceetool-paysm"
-        title="PaySM 카드 인증"
+        title="카드 결제 인증"
         referrerPolicy="no-referrer"
         className="min-h-0 flex-1 border-0"
       />

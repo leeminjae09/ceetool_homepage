@@ -674,6 +674,33 @@ test("ambiguous 0000 notification is not mistaken for an approval or refund", as
   );
 });
 
+test("customer review messages do not expose internal provider instructions", async (t) => {
+  const f = await fixture(t);
+  const invoice = await f.invoice(),
+    checkout = await f.prepare(invoice),
+    auth = f.auth(checkout);
+  await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: auth,
+  });
+  await f.api(`/notify/${checkout.attemptToken}`, {
+    method: "POST",
+    form: f.notify(checkout, auth, { resultCd: "0000" }),
+    origin: null,
+  });
+  const customer = (await f.api(`/invoices/${invoice.token}`)).data;
+  assert.equal(customer.state, "review");
+  assert.equal(
+    customer.note,
+    "결제 상태를 확인하고 있습니다. 다시 결제하지 말고 담당자에게 문의해 주세요.",
+  );
+  assert.doesNotMatch(customer.note, /PaySM|PG|관리자|서버 통지/i);
+  const admin = await f.login();
+  const history = await f.api("/admin/invoices", admin);
+  assert.match(JSON.stringify(history.data), /PaySM 관리자/);
+  assert.equal(f.calls(), 1);
+});
+
 test("SQLite survives reopen and removes personal data according to declared retention", () => {
   const directory = mkdtempSync(join(tmpdir(), "ceetool-payments-test-"));
   try {
