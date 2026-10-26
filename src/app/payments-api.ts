@@ -18,6 +18,8 @@ export interface Invoice {
 }
 export interface PublicInvoice extends Invoice {
   paymentConfigured: boolean;
+  buyerName?: string | null;
+  buyerPhone?: string | null;
 }
 export interface AdminInvoice extends Invoice {
   createdAt: number;
@@ -41,6 +43,8 @@ export interface NewInvoice {
   taxType: "taxable" | "exempt";
   terms: string;
   expiresAt: number;
+  buyerName?: string;
+  buyerPhone?: string;
 }
 
 const base = "/api/payments";
@@ -125,10 +129,19 @@ export const paymentApi = {
     if (
       !isInvoice(value) ||
       !record(value) ||
-      typeof value.paymentConfigured !== "boolean"
+      typeof value.paymentConfigured !== "boolean" ||
+      (value.buyerName !== undefined && !nullableString(value.buyerName)) ||
+      (value.buyerPhone !== undefined && !nullableString(value.buyerPhone))
     )
       return invalidResponse();
-    return { ...value, paymentConfigured: value.paymentConfigured };
+    return {
+      ...value,
+      paymentConfigured: value.paymentConfigured,
+      buyerName: nullableString(value.buyerName) ? value.buyerName : undefined,
+      buyerPhone: nullableString(value.buyerPhone)
+        ? value.buyerPhone
+        : undefined,
+    };
   },
   async prepare(
     token: string,
@@ -189,8 +202,11 @@ export const paymentApi = {
   },
   async invoices(
     page = 0,
+    query = "",
+    state: PaymentState | "" = "",
   ): Promise<{ invoices: AdminInvoice[]; hasMore: boolean }> {
-    const value = await request(`/admin/invoices?page=${page}`);
+    const params = new URLSearchParams({ page: String(page), q: query, state });
+    const value = await request(`/admin/invoices?${params}`);
     if (
       !record(value) ||
       !Array.isArray(value.invoices) ||
@@ -199,6 +215,25 @@ export const paymentApi = {
     )
       return invalidResponse();
     return { invoices: value.invoices, hasMore: value.hasMore };
+  },
+  async settings(): Promise<{ defaultTerms: string }> {
+    const value = await request("/admin/settings");
+    if (!record(value) || typeof value.defaultTerms !== "string")
+      return invalidResponse();
+    return { defaultTerms: value.defaultTerms };
+  },
+  async saveDefaultTerms(
+    defaultTerms: string,
+    csrf: string,
+  ): Promise<{ defaultTerms: string }> {
+    const value = await request("/admin/settings", {
+      method: "PUT",
+      headers: { "X-CSRF-Token": csrf },
+      body: JSON.stringify({ defaultTerms }),
+    });
+    if (!record(value) || typeof value.defaultTerms !== "string")
+      return invalidResponse();
+    return { defaultTerms: value.defaultTerms };
   },
   async create(invoice: NewInvoice, csrf: string): Promise<AdminInvoice> {
     const value = await request("/admin/invoices", {

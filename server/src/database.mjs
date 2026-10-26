@@ -34,6 +34,10 @@ export function openDatabase(path) {
         CHECK(state IN ('prepared','processing','closed','paid','review'))
     );
     CREATE INDEX IF NOT EXISTS attempts_invoice ON attempts(invoice_token);
+    CREATE INDEX IF NOT EXISTS invoices_created ON invoices(created_at DESC, token DESC);
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY, value TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       hash TEXT PRIMARY KEY, email TEXT NOT NULL, csrf TEXT NOT NULL,
       expires_at INTEGER NOT NULL
@@ -76,7 +80,12 @@ export function invoiceView(row, admin = false) {
           buyerPhone: row.buyer_phone,
           tid: row.tid,
         }
-      : {}),
+      : row.state === "pending" &&
+          row.expires_at > Date.now() &&
+          row.consent_at === null &&
+          (row.buyer_name || row.buyer_phone)
+        ? { buyerName: row.buyer_name, buyerPhone: row.buyer_phone }
+        : {}),
   };
 }
 
@@ -85,7 +94,7 @@ export function purgePersonalData(db, now = Date.now()) {
   fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
   db.prepare(
     `UPDATE invoices SET buyer_name = NULL, buyer_phone = NULL
-    WHERE buyer_name IS NOT NULL AND
+    WHERE (buyer_name IS NOT NULL OR buyer_phone IS NOT NULL) AND
     ((state = 'pending' AND expires_at < ?) OR COALESCE(paid_at, created_at) < ?)`,
   ).run(now - 30 * 86400000, fiveYearsAgo.getTime());
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now);

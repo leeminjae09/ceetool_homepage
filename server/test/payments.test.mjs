@@ -371,7 +371,8 @@ test("admin mutations require session, same origin, CSRF, and valid immutable in
     { amount: 1.5 },
     { amount: 0 },
     { amount: Number.MAX_SAFE_INTEGER + 1 },
-    { terms: "" },
+    { terms: null },
+    { terms: "a".repeat(2001) },
     { taxType: "invalid" },
     { expiresAt: 1 },
   ]) {
@@ -387,6 +388,224 @@ test("admin mutations require session, same origin, CSRF, and valid immutable in
     );
   }
   assert.equal((await f.api("/admin/invoices?page=-1", admin)).status, 400);
+});
+
+test("optional terms and customer prefill are validated, consented and hidden after checkout", async (t) => {
+  const f = await fixture(t);
+  const admin = await f.login();
+  const invoice = await f.invoice(
+    {
+      terms: "",
+      buyerName: " 주문자 ",
+      buyerPhone: "010-1234-5678",
+    },
+    admin,
+  );
+  assert.equal(invoice.terms, "");
+  assert.equal(invoice.buyerName, "주문자");
+  const prefilled = (await f.api(`/invoices/${invoice.token}`)).data;
+  assert.equal(prefilled.buyerName, "주문자");
+  assert.equal(prefilled.buyerPhone, "01012345678");
+  assert.equal(prefilled.tid, undefined);
+  const checkout = await f.prepare(invoice);
+  const publicAfterConsent = (await f.api(`/invoices/${invoice.token}`)).data;
+  assert.equal(publicAfterConsent.buyerName, undefined);
+  await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: f.auth(checkout),
+  });
+  const paid = (await f.api(`/invoices/${invoice.token}`)).data;
+  assert.equal(paid.state, "paid");
+  assert.equal(paid.buyerName, undefined);
+  assert.equal(paid.buyerPhone, undefined);
+  const expired = await f.invoice({ terms: "", buyerName: "숨길 이름" }, admin);
+  f.db
+    .prepare("UPDATE invoices SET expires_at = 1 WHERE token = ?")
+    .run(expired.token);
+  assert.equal(
+    (await f.api(`/invoices/${expired.token}`)).data.buyerName,
+    undefined,
+  );
+  const phoneOnly = await f.invoice({ buyerPhone: "01012345678" }, admin);
+  f.db
+    .prepare("UPDATE invoices SET expires_at = 1 WHERE token = ?")
+    .run(phoneOnly.token);
+  purgePersonalData(f.db);
+  assert.equal(
+    f.db
+      .prepare("SELECT buyer_phone FROM invoices WHERE token = ?")
+      .get(phoneOnly.token).buyer_phone,
+    null,
+  );
+  for (const invalid of [
+    { buyerName: "a".repeat(51) },
+    { buyerName: null },
+    { buyerPhone: "bad" },
+    { buyerPhone: 12345 },
+  ]) {
+    assert.equal(
+      (
+        await f.api("/admin/invoices", {
+          method: "POST",
+          ...admin,
+          body: {
+            title: "항목",
+            amount: 1000,
+            taxType: "taxable",
+            expiresAt: Date.now() + 60000,
+            ...invalid,
+          },
+        })
+      ).status,
+      400,
+    );
+  }
+});
+
+test("default terms are admin-only, explicitly saved and never rewrite issued invoice terms", async (t) => {
+  const f = await fixture(t);
+  const admin = await f.login();
+  assert.equal((await f.api("/admin/settings")).status, 401);
+  assert.deepEqual((await f.api("/admin/settings", admin)).data, {
+    defaultTerms: "",
+  });
+  for (const options of [
+    { cookie: admin.cookie },
+    { ...admin, origin: "https://attacker.invalid" },
+  ]) {
+    assert.equal(
+      (
+        await f.api("/admin/settings", {
+          method: "PUT",
+          ...options,
+          body: { defaultTerms: "문구" },
+        })
+      ).status,
+      403,
+    );
+  }
+  assert.equal(
+    (
+      await f.api("/admin/settings", {
+        method: "PUT",
+        ...admin,
+        body: { defaultTerms: "a".repeat(2001) },
+      })
+    ).status,
+    400,
+  );
+  const original = await f.invoice({ terms: "기존 계약" }, admin);
+  assert.equal(
+    (
+      await f.api("/admin/settings", {
+        method: "PUT",
+        ...admin,
+        body: { defaultTerms: "  저장된 문구  " },
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await f.api("/admin/settings", admin)).data.defaultTerms,
+    "저장된 문구",
+  );
+  assert.equal(
+    (await f.api(`/invoices/${original.token}`)).data.terms,
+    "기존 계약",
+  );
+  const blank = await f.invoice({ terms: "" }, admin);
+  assert.equal(blank.terms, "");
+  await f.api("/admin/settings", {
+    method: "PUT",
+    ...admin,
+    body: { defaultTerms: "" },
+  });
+  assert.equal((await f.api("/admin/settings", admin)).data.defaultTerms, "");
+});
+
+test("history is server-paginated by twenty with literal search and derived expiry filters", async (t) => {
+  const f = await fixture(t);
+  const admin = await f.login();
+  const insert = f.db.prepare(`INSERT INTO invoices
+    (token, order_no, title, amount, tax_type, terms, expires_at, created_at, buyer_name, buyer_phone)
+    VALUES (?, ?, ?, 1000, 'taxable', '', ?, ?, ?, ?)`);
+  const now = Date.now();
+  for (let i = 0; i < 42; i++) {
+    insert.run(
+      `history-${i}`,
+      `ORDER-${i}`,
+      i === 0 ? "특수 %_" : `프로젝트 ${i}`,
+      i === 0 ? 1 : now + 86400000,
+      now + i,
+      `고객 ${i}`,
+      "01012345678",
+    );
+  }
+  const first = (await f.api("/admin/invoices", admin)).data;
+  assert.equal(first.invoices.length, 20);
+  assert.equal(first.hasMore, true);
+  assert.equal(first.invoices[0].orderNo, "ORDER-41");
+  const second = (await f.api("/admin/invoices?page=1", admin)).data;
+  assert.equal(second.invoices.length, 20);
+  assert.ok(
+    !second.invoices.some((invoice) =>
+      first.invoices.some((other) => other.token === invoice.token),
+    ),
+  );
+  const last = (await f.api("/admin/invoices?page=2", admin)).data;
+  assert.equal(last.invoices.length, 2);
+  assert.equal(last.hasMore, false);
+  for (const q of ["ORDER-41", "고객 41", "프로젝트 41"]) {
+    const result = (
+      await f.api(`/admin/invoices?q=${encodeURIComponent(q)}`, admin)
+    ).data;
+    assert.equal(result.invoices.length, 1);
+    assert.equal(result.invoices[0].orderNo, "ORDER-41");
+  }
+  const literal = (await f.api("/admin/invoices?q=%25_", admin)).data;
+  assert.equal(literal.invoices.length, 1);
+  assert.equal(literal.invoices[0].orderNo, "ORDER-0");
+  const expired = (await f.api("/admin/invoices?state=expired", admin)).data;
+  assert.equal(expired.invoices.length, 1);
+  assert.equal(expired.invoices[0].state, "expired");
+  assert.ok(
+    (await f.api("/admin/invoices?state=pending", admin)).data.invoices.every(
+      (invoice) => invoice.state === "pending",
+    ),
+  );
+  assert.equal(
+    (await f.api("/admin/invoices?state=paid", admin)).data.invoices.length,
+    0,
+  );
+  assert.equal(
+    (await f.api("/admin/invoices?state=invalid", admin)).status,
+    400,
+  );
+  assert.equal(
+    (await f.api(`/admin/invoices?q=${"a".repeat(101)}`, admin)).status,
+    400,
+  );
+});
+
+test("saved default terms survive reopening the SQLite database", () => {
+  const directory = mkdtempSync(join(tmpdir(), "ceetool-settings-"));
+  const path = join(directory, "payments.sqlite");
+  let db = openDatabase(path);
+  try {
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('default_terms', ?)",
+    ).run("저장된 기본 조건");
+    db.close();
+    db = openDatabase(path);
+    assert.equal(
+      db.prepare("SELECT value FROM settings WHERE key = 'default_terms'").get()
+        .value,
+      "저장된 기본 조건",
+    );
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("checkout signs server amount, requires consent and locks expired or superseded requests", async (t) => {

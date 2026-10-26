@@ -12,6 +12,11 @@
     @apply space-y-0 px-4 py-8;
     background-image: none;
     animation: none;
+    color-scheme: dark;
+  }
+
+  .payment-page select option {
+    @apply bg-gray-800 text-white;
   }
 
   @keyframes slide {

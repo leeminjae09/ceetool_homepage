@@ -35,6 +35,8 @@ const statusLabels: Record<PaymentState, string> = {
   paid: "결제 완료",
   review: "결제 확인 중",
 };
+const isPaymentState = (value: string): value is PaymentState =>
+  Object.prototype.hasOwnProperty.call(statusLabels, value);
 const won = (amount: number) => `${amount.toLocaleString("ko-KR")}원`;
 const date = (value: number) => new Date(value).toLocaleString("ko-KR");
 function message(error: unknown): string {
@@ -362,6 +364,7 @@ function CustomerPayment({ token }: { token: string }) {
                   className={inputClass}
                   name="name"
                   autoComplete="name"
+                  defaultValue={invoice.buyerName || ""}
                   required
                   maxLength={50}
                   disabled={busy}
@@ -374,17 +377,20 @@ function CustomerPayment({ token }: { token: string }) {
                   name="phone"
                   type="tel"
                   autoComplete="tel"
+                  defaultValue={invoice.buyerPhone || ""}
                   required
                   maxLength={24}
                   disabled={busy}
                 />
               </label>
-              <details className="rounded-lg border border-gray-700 p-3 text-sm">
-                <summary className="cursor-pointer">계약·환불조건</summary>
-                <p className="mt-3 whitespace-pre-wrap break-words leading-relaxed text-gray-300">
-                  {invoice.terms}
-                </p>
-              </details>
+              {invoice.terms && (
+                <details className="rounded-lg border border-gray-700 p-3 text-sm">
+                  <summary className="cursor-pointer">계약·환불조건</summary>
+                  <p className="mt-3 whitespace-pre-wrap break-words leading-relaxed text-gray-300">
+                    {invoice.terms}
+                  </p>
+                </details>
+              )}
               <details className="rounded-lg border border-gray-700 p-3 text-sm">
                 <summary className="cursor-pointer">개인정보 수집·이용</summary>
                 <p className="mt-3 leading-relaxed text-gray-300">
@@ -403,7 +409,11 @@ function CustomerPayment({ token }: { token: string }) {
                   disabled={busy}
                   className="mt-1 h-4 w-4 shrink-0"
                 />
-                <span>계약·환불조건 및 개인정보 수집·이용에 동의합니다.</span>
+                <span>
+                  {invoice.terms
+                    ? "계약·환불조건 및 개인정보 수집·이용에 동의합니다."
+                    : "개인정보 수집·이용에 동의합니다."}
+                </span>
               </label>
               {!invoice.paymentConfigured && (
                 <ErrorNotice error="결제 서비스가 아직 설정되지 않았습니다. 담당자에게 문의해 주세요." />
@@ -496,21 +506,54 @@ export function PaymentAdminPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
+  const [amount, setAmount] = useState("");
+  const [terms, setTerms] = useState("");
+  const [defaultTerms, setDefaultTerms] = useState("");
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsRevision, setSettingsRevision] = useState(0);
+  const [query, setQuery] = useState("");
+  const [queryInput, setQueryInput] = useState("");
+  const [filter, setFilter] = useState<PaymentState | "">("");
+  const [listingLoading, setListingLoading] = useState(false);
+  const settingsEmail = session?.email;
+  useEffect(() => {
+    let active = true;
+    setSettingsLoaded(false);
+    setSettingsError("");
+    if (!settingsEmail) return;
+    void paymentApi
+      .settings()
+      .then((settings) => {
+        if (!active) return;
+        setDefaultTerms(settings.defaultTerms);
+        setTerms(settings.defaultTerms);
+        setSettingsLoaded(true);
+      })
+      .catch((err: unknown) => {
+        if (active) setSettingsError(message(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [settingsEmail, settingsRevision]);
   useEffect(() => {
     let active = true;
     async function load() {
       setError("");
       setUnavailable(false);
+      setListingLoading(true);
+      setInvoices([]);
+      setHasMore(false);
       try {
         const current = await paymentApi.session();
         if (!active) return;
         setSession(current);
         if (current) {
-          const result = await paymentApi.invoices();
+          const result = await paymentApi.invoices(page, query, filter);
           if (!active) return;
           setInvoices(result.invoices);
           setHasMore(result.hasMore);
-          setPage(0);
         }
       } catch (err) {
         if (active) {
@@ -518,14 +561,17 @@ export function PaymentAdminPage() {
           setUnavailable(err instanceof PaymentApiError && err.status === 503);
         }
       } finally {
-        if (active) setLoaded(true);
+        if (active) {
+          setLoaded(true);
+          setListingLoading(false);
+        }
       }
     }
     void load();
     return () => {
       active = false;
     };
-  }, [revision]);
+  }, [revision, page, query, filter]);
   const link = (invoice: Invoice) => `https://ceetool.com/pay/${invoice.token}`;
   function operationError(err: unknown) {
     setError(message(err));
@@ -548,38 +594,46 @@ export function PaymentAdminPage() {
       const created = await paymentApi.create(
         {
           title: String(form.get("title") || ""),
-          amount: Number(form.get("amount")),
+          amount: Number(String(form.get("amount") || "").replace(/,/g, "")),
           taxType,
           terms: String(form.get("terms") || ""),
           expiresAt: new Date(String(form.get("expiresAt") || "")).getTime(),
+          buyerName: String(form.get("buyerName") || ""),
+          buyerPhone: String(form.get("buyerPhone") || ""),
         },
         session.csrfToken,
       );
-      setInvoices((previous) => [created, ...previous]);
+      setInvoices([created]);
+      setPage(0);
+      setQuery("");
+      setQueryInput("");
+      setFilter("");
       setRevision((value) => value + 1);
       setNotice("결제 링크를 발급했습니다.");
       formElement.reset();
+      setAmount("");
+      setTerms(defaultTerms);
     } catch (err) {
       operationError(err);
     } finally {
       setBusy(false);
     }
   }
-  async function more() {
-    if (busy) return;
+  async function saveTerms() {
+    if (!session || busy || !settingsLoaded) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
-      const nextPage = page + 1;
-      const result = await paymentApi.invoices(nextPage);
-      setInvoices((previous) => [
-        ...previous,
-        ...result.invoices.filter(
-          (item) => !previous.some((old) => old.token === item.token),
-        ),
-      ]);
-      setHasMore(result.hasMore);
-      setPage(nextPage);
+      const settings = await paymentApi.saveDefaultTerms(
+        terms,
+        session.csrfToken,
+      );
+      setDefaultTerms(settings.defaultTerms);
+      setTerms(settings.defaultTerms);
+      setNotice(
+        "기본 문구를 저장했습니다. 기존 결제 링크에는 적용되지 않습니다.",
+      );
     } catch (err) {
       operationError(err);
     } finally {
@@ -623,6 +677,7 @@ export function PaymentAdminPage() {
         current.map((item) => (item.token === expired.token ? expired : item)),
       );
       setNotice("결제 링크를 종료했습니다.");
+      setRevision((value) => value + 1);
     } catch (err) {
       operationError(err);
     } finally {
@@ -706,9 +761,22 @@ export function PaymentAdminPage() {
                 <input
                   className={inputClass}
                   name="amount"
-                  type="number"
-                  min={1}
-                  step={1}
+                  type="text"
+                  inputMode="numeric"
+                  value={amount}
+                  onChange={(event) => {
+                    const digits = event.target.value.replace(/,/g, "");
+                    setAmount(
+                      /^\d*$/.test(digits)
+                        ? digits
+                            .replace(/^0+(?=\d)/, "")
+                            .replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                        : event.target.value,
+                    );
+                  }}
+                  pattern="[1-9][0-9]{0,2}(,[0-9]{3})*"
+                  title="1원 이상의 정수 금액을 입력해 주세요."
+                  maxLength={21}
                   required
                   disabled={busy}
                 />
@@ -730,6 +798,33 @@ export function PaymentAdminPage() {
                 </select>
               </label>
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm">
+                주문자 이름 (선택)
+                <input
+                  className={inputClass}
+                  name="buyerName"
+                  maxLength={50}
+                  disabled={busy}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="block text-sm">
+                연락처 (선택)
+                <input
+                  className={inputClass}
+                  name="buyerPhone"
+                  type="tel"
+                  maxLength={24}
+                  disabled={busy}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+            <p className="text-xs text-gray-400">
+              입력한 주문자 정보는 고객 결제 화면에 미리 표시됩니다. 수집·제공이
+              가능한 정보만 입력하고 링크는 해당 고객에게만 전달하세요.
+            </p>
             <label className="block text-sm">
               유효기간
               <input
@@ -742,118 +837,249 @@ export function PaymentAdminPage() {
               />
             </label>
             <label className="block text-sm">
-              계약·환불조건
+              계약·환불조건 (선택)
               <textarea
                 className={`${inputClass} min-h-28`}
                 name="terms"
-                required
+                value={terms}
+                onChange={(event) => setTerms(event.target.value)}
                 maxLength={2000}
-                disabled={busy}
+                disabled={busy || !settingsLoaded}
+                placeholder="별도 안내가 필요한 경우에만 입력하세요."
               />
             </label>
+            <ErrorNotice error={settingsError} />
+            {settingsError && (
+              <button
+                type="button"
+                className="min-h-11 text-sm text-blue-400 hover:underline"
+                onClick={() => setSettingsRevision((value) => value + 1)}
+              >
+                기본 문구 다시 불러오기
+              </button>
+            )}
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <button
+                type="button"
+                className="min-h-11 text-blue-400 hover:underline disabled:opacity-50"
+                disabled={busy || !settingsLoaded}
+                onClick={() => void saveTerms()}
+              >
+                현재 문구를 기본으로 저장
+              </button>
+              <button
+                type="button"
+                className="min-h-11 text-gray-300 hover:underline disabled:opacity-50"
+                disabled={busy || !settingsLoaded}
+                onClick={() => setTerms(defaultTerms)}
+              >
+                기본 문구 불러오기
+              </button>
+            </div>
             <button
               type="submit"
               className={buttonClass}
-              disabled={busy || !session.paymentConfigured}
+              disabled={busy || !settingsLoaded || !session.paymentConfigured}
             >
               {busy ? "처리 중…" : "링크 발급"}
             </button>
           </form>
           <section className="mt-8 space-y-4" aria-label="결제 내역">
             <h2 className="text-lg font-semibold">결제 내역</h2>
-            {!invoices.length && (
-              <p className="text-gray-400">발급한 결제 링크가 없습니다.</p>
-            )}
-            {invoices.map((invoice) => (
-              <article
-                key={invoice.token}
-                className="min-w-0 rounded-xl border border-gray-700 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="min-w-0 flex-1 break-words font-semibold">
-                    {invoice.title}
-                  </h3>
-                  <span
-                    className={
-                      invoice.state === "paid"
-                        ? "text-green-300"
-                        : invoice.state === "review"
-                          ? "text-amber-200"
-                          : "text-gray-300"
-                    }
-                  >
-                    {statusLabels[invoice.state]}
-                  </span>
-                </div>
-                <p className="mt-2">
-                  {won(invoice.amount)} ·{" "}
-                  {invoice.taxType === "taxable" ? "부가세 포함" : "면세"}
-                </p>
-                <p className="mt-2 text-sm text-gray-400">
-                  유효기간: {date(invoice.expiresAt)}
-                </p>
-                <p className="mt-1 break-all text-sm text-gray-400">
-                  주문번호: {invoice.orderNo}
-                </p>
-                {invoice.tid && (
-                  <p className="mt-1 break-all text-sm text-gray-400">
-                    거래번호: {invoice.tid}
-                  </p>
-                )}
-                {invoice.buyerName && (
-                  <p className="mt-1 break-all text-sm text-gray-300">
-                    {invoice.buyerName} · {invoice.buyerPhone}
-                  </p>
-                )}
-                {invoice.note && (
-                  <p className="mt-3 text-sm text-amber-200">{invoice.note}</p>
-                )}
-                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
-                  <input
-                    aria-label={`${invoice.title} 결제 링크`}
-                    className="min-w-0 flex-1 rounded bg-gray-800 px-3 py-2 text-sm"
-                    readOnly
-                    value={link(invoice)}
-                    onFocus={(event) => event.currentTarget.select()}
-                  />
-                  <button
-                    className="min-h-11 text-sm text-blue-400 hover:underline"
-                    type="button"
-                    onClick={() => void copy(invoice)}
-                  >
-                    링크 복사
-                  </button>
-                  {invoice.state === "pending" && (
-                    <button
-                      className="min-h-11 text-sm text-red-300 hover:underline"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void expire(invoice)}
-                    >
-                      링크 종료
-                    </button>
-                  )}
-                  <Link
-                    className="min-h-11 content-center text-sm text-blue-400 hover:underline"
-                    to={`/pay/${invoice.token}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    열기
-                  </Link>
-                </div>
-              </article>
-            ))}
-            {hasMore && (
-              <button
-                className={buttonClass}
-                type="button"
+            <form
+              className="flex flex-col gap-3 sm:flex-row"
+              role="search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setQuery(queryInput.trim());
+                setPage(0);
+                setRevision((value) => value + 1);
+              }}
+            >
+              <input
+                className={`${inputClass} mt-0 min-w-0 flex-1`}
+                aria-label="결제 내역 검색"
+                value={queryInput}
+                onChange={(event) => setQueryInput(event.target.value)}
+                placeholder="항목 · 주문번호 · 주문자 · 연락처"
+                maxLength={100}
                 disabled={busy}
-                onClick={() => void more()}
+              />
+              <select
+                className={`${inputClass} mt-0 sm:w-auto`}
+                aria-label="결제 상태 필터"
+                value={filter}
+                disabled={busy}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "" || isPaymentState(value)) {
+                    setFilter(value);
+                    setPage(0);
+                  }
+                }}
               >
-                이전 내역 더 보기
+                <option value="">전체 상태</option>
+                {Object.entries(statusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className={buttonClass}
+                disabled={busy || listingLoading}
+              >
+                검색
               </button>
+            </form>
+            <div
+              className="hidden grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr] gap-3 px-4 text-xs text-gray-400 sm:grid"
+              aria-hidden="true"
+            >
+              <span>결제 항목</span>
+              <span>금액</span>
+              <span>주문자</span>
+              <span>상태</span>
+              <span>발급일</span>
+            </div>
+            {listingLoading && (
+              <p role="status" className="text-gray-400">
+                결제 내역을 불러오는 중입니다.
+              </p>
             )}
+            {!listingLoading && !error && !invoices.length && (
+              <p className="text-gray-400">조건에 맞는 결제 내역이 없습니다.</p>
+            )}
+            {!listingLoading &&
+              invoices.map((invoice) => (
+                <details
+                  key={invoice.token}
+                  className="group min-w-0 rounded-xl border border-gray-700 p-4"
+                >
+                  <summary
+                    className="grid cursor-pointer list-none grid-cols-2 items-center gap-3 text-sm sm:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_1fr]"
+                    aria-label={`${invoice.title} 상세`}
+                  >
+                    <span className="min-w-0 break-words font-semibold">
+                      <span
+                        aria-hidden="true"
+                        className="mr-2 inline-block text-gray-400 group-open:rotate-90"
+                      >
+                        ▸
+                      </span>
+                      {invoice.title}
+                    </span>
+                    <span className="break-words">{won(invoice.amount)}</span>
+                    <span className="min-w-0 break-words text-gray-300">
+                      {invoice.buyerName || "미입력"}
+                    </span>
+                    <span
+                      className={
+                        invoice.state === "paid"
+                          ? "text-green-300"
+                          : invoice.state === "review"
+                            ? "text-amber-200"
+                            : "text-gray-300"
+                      }
+                    >
+                      {statusLabels[invoice.state]}
+                    </span>
+                    <span className="col-span-2 text-xs text-gray-400 sm:col-span-1">
+                      {new Date(invoice.createdAt).toLocaleDateString("ko-KR")}
+                    </span>
+                  </summary>
+                  <div className="mt-4 border-t border-gray-700 pt-3">
+                    <p className="text-sm text-gray-400">
+                      {invoice.taxType === "taxable" ? "부가세 포함" : "면세"}
+                    </p>
+                    <p className="mt-2 text-sm text-gray-400">
+                      유효기간: {date(invoice.expiresAt)}
+                    </p>
+                    <p className="mt-1 break-all text-sm text-gray-400">
+                      주문번호: {invoice.orderNo}
+                    </p>
+                    {invoice.tid && (
+                      <p className="mt-1 break-all text-sm text-gray-400">
+                        거래번호: {invoice.tid}
+                      </p>
+                    )}
+                    {invoice.buyerName && (
+                      <p className="mt-1 break-all text-sm text-gray-300">
+                        {invoice.buyerName} · {invoice.buyerPhone}
+                      </p>
+                    )}
+                    {invoice.note && (
+                      <p className="mt-3 text-sm text-amber-200">
+                        {invoice.note}
+                      </p>
+                    )}
+                    {invoice.terms && (
+                      <p className="mt-3 whitespace-pre-wrap break-words text-sm text-gray-300">
+                        {invoice.terms}
+                      </p>
+                    )}
+                    <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
+                      <input
+                        aria-label={`${invoice.title} 결제 링크`}
+                        className="min-w-0 flex-1 rounded bg-gray-800 px-3 py-2 text-sm"
+                        readOnly
+                        value={link(invoice)}
+                        onFocus={(event) => event.currentTarget.select()}
+                      />
+                      <button
+                        className="min-h-11 text-sm text-blue-400 hover:underline"
+                        type="button"
+                        onClick={() => void copy(invoice)}
+                      >
+                        링크 복사
+                      </button>
+                      {invoice.state === "pending" && (
+                        <button
+                          className="min-h-11 text-sm text-red-300 hover:underline"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void expire(invoice)}
+                        >
+                          링크 종료
+                        </button>
+                      )}
+                      <Link
+                        className="min-h-11 content-center text-sm text-blue-400 hover:underline"
+                        to={`/pay/${invoice.token}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        열기
+                      </Link>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            <nav
+              className="flex items-center justify-between gap-3"
+              aria-label="결제 내역 페이지"
+            >
+              <button
+                className="min-h-11 rounded-lg border border-gray-600 px-4 py-2 disabled:opacity-40"
+                type="button"
+                disabled={busy || listingLoading || page === 0}
+                onClick={() => setPage((value) => value - 1)}
+              >
+                이전
+              </button>
+              <span className="text-sm text-gray-400">
+                {page + 1} 페이지 · 페이지당 20건
+              </span>
+              <button
+                className="min-h-11 rounded-lg border border-gray-600 px-4 py-2 disabled:opacity-40"
+                type="button"
+                disabled={busy || listingLoading || !hasMore}
+                onClick={() => setPage((value) => value + 1)}
+              >
+                다음
+              </button>
+            </nav>
           </section>
         </>
       )}

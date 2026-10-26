@@ -28,6 +28,18 @@ export async function reconcileReviews(db, provider, logger = console) {
           JSON.stringify({
             event: "payment_reconciliation_unconfirmed",
             reason: "receipt_not_matching_approved_transaction",
+            lookupSucceeded: result.resultCd === "0000",
+            transactionMatches: result.TID === invoice.tid,
+            amountMatches: String(result.GOODS_AMT) === String(invoice.amount),
+            orderMatches: !result.ORD_NO || result.ORD_NO === invoice.order_no,
+            status: ["0", "1", "2"].includes(String(result.TRX_ST_CD))
+              ? String(result.TRX_ST_CD)
+              : "missing_or_unknown",
+            resultCode:
+              typeof result.resultCd === "string" &&
+              /^\d{4}$/.test(result.resultCd)
+                ? result.resultCd
+                : "missing_or_unknown",
           }),
         );
         continue;

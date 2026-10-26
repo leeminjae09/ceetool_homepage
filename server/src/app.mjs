@@ -36,6 +36,16 @@ const text = (value, max) =>
   typeof value === "string" && value.trim().length > 0 && value.length <= max;
 const validToken = (value) =>
   typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
+function normalizePhone(value) {
+  requireValue(
+    typeof value === "string" && /^[+\d\s-]{8,24}$/.test(value),
+    400,
+    "연락처를 확인해 주세요.",
+  );
+  const phone = value.replace(/[+\s-]/g, "");
+  requireValue(/^\d{8,15}$/.test(phone), 400, "연락처를 확인해 주세요.");
+  return phone;
+}
 const cookieValue = (req, name) =>
   (req.headers.cookie || "")
     .split(";")
@@ -307,15 +317,71 @@ export function createPaymentApp({
       400,
       "페이지 번호가 올바르지 않습니다.",
     );
+    const query = req.query.q ?? "";
+    const state = req.query.state ?? "";
+    requireValue(
+      typeof query === "string" && query.length <= 100,
+      400,
+      "검색어는 100자 이내로 입력해 주세요.",
+    );
+    requireValue(
+      typeof state === "string" &&
+        ["", "pending", "expired", "processing", "paid", "review"].includes(
+          state,
+        ),
+      400,
+      "결제 상태를 확인해 주세요.",
+    );
+    const clauses = [];
+    const values = [];
+    if (query.trim()) {
+      clauses.push(`(instr(lower(title), lower(?)) > 0 OR
+        instr(lower(order_no), lower(?)) > 0 OR
+        instr(lower(COALESCE(buyer_name, '')), lower(?)) > 0 OR
+        instr(COALESCE(buyer_phone, ''), ?) > 0)`);
+      values.push(...Array(4).fill(query.trim()));
+    }
+    if (state === "expired" || state === "pending") {
+      clauses.push(
+        `state = 'pending' AND expires_at ${state === "expired" ? "<=" : ">"} ?`,
+      );
+      values.push(Date.now());
+    } else if (state) {
+      clauses.push("state = ?");
+      values.push(state);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const rows = db
       .prepare(
-        "SELECT * FROM invoices ORDER BY created_at DESC, token DESC LIMIT 51 OFFSET ?",
+        `SELECT * FROM invoices ${where} ORDER BY created_at DESC, token DESC LIMIT 21 OFFSET ?`,
       )
-      .all(page * 50);
+      .all(...values, page * 20);
     res.json({
-      invoices: rows.slice(0, 50).map((row) => invoiceView(row, true)),
-      hasMore: rows.length > 50,
+      invoices: rows.slice(0, 20).map((row) => invoiceView(row, true)),
+      hasMore: rows.length > 20,
     });
+  });
+  app.get(`${API_PATH}/admin/settings`, admin, (req, res) => {
+    res.json({
+      defaultTerms:
+        db
+          .prepare("SELECT value FROM settings WHERE key = 'default_terms'")
+          .get()?.value || "",
+    });
+  });
+  app.put(`${API_PATH}/admin/settings`, sameOrigin, admin, csrf, (req, res) => {
+    requireValue(
+      object(req.body) &&
+        typeof req.body.defaultTerms === "string" &&
+        req.body.defaultTerms.length <= 2000,
+      400,
+      "기본 문구는 2000자 이내로 입력해 주세요.",
+    );
+    const defaultTerms = req.body.defaultTerms.trim();
+    db.prepare(
+      "INSERT INTO settings (key, value) VALUES ('default_terms', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run(defaultTerms);
+    res.json({ defaultTerms });
   });
   app.post(
     `${API_PATH}/admin/invoices`,
@@ -326,7 +392,10 @@ export function createPaymentApp({
       ready();
       const body = req.body;
       requireValue(object(body), 400, "결제 정보를 확인해 주세요.");
-      const { title, amount, taxType, terms, expiresAt } = body;
+      const { title, amount, taxType, expiresAt } = body;
+      const terms = body.terms === undefined ? "" : body.terms;
+      const buyerName = body.buyerName === undefined ? "" : body.buyerName;
+      const buyerPhone = body.buyerPhone === undefined ? "" : body.buyerPhone;
       requireValue(text(title, 80), 400, "결제 항목은 1~80자로 입력해 주세요.");
       requireValue(
         Number.isSafeInteger(amount) && amount > 0,
@@ -338,7 +407,22 @@ export function createPaymentApp({
         400,
         "과세 구분을 선택해 주세요.",
       );
-      requireValue(text(terms, 2000), 400, "계약·환불조건을 입력해 주세요.");
+      requireValue(
+        typeof terms === "string" && terms.length <= 2000,
+        400,
+        "계약·환불조건은 2000자 이내로 입력해 주세요.",
+      );
+      requireValue(
+        typeof buyerName === "string" && buyerName.length <= 50,
+        400,
+        "주문자 이름은 50자 이내로 입력해 주세요.",
+      );
+      requireValue(
+        typeof buyerPhone === "string",
+        400,
+        "연락처를 확인해 주세요.",
+      );
+      const phone = buyerPhone.trim() ? normalizePhone(buyerPhone) : null;
       requireValue(
         Number.isSafeInteger(expiresAt) &&
           Number.isFinite(new Date(expiresAt).getTime()) &&
@@ -350,8 +434,8 @@ export function createPaymentApp({
         now = Date.now();
       const orderNo = `CT${ediDate()}${token().replace(/[-_]/g, "").slice(0, 10)}`;
       db.prepare(
-        `INSERT INTO invoices (token, order_no, title, amount, tax_type, terms, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO invoices (token, order_no, title, amount, tax_type, terms, expires_at, created_at, buyer_name, buyer_phone)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         id,
         orderNo,
@@ -361,6 +445,8 @@ export function createPaymentApp({
         terms.trim(),
         expiresAt,
         now,
+        buyerName.trim() || null,
+        phone,
       );
       res.status(201).json(invoiceView(getInvoice(id), true));
     },
@@ -412,17 +498,13 @@ export function createPaymentApp({
       "현재 결제할 수 없는 주문입니다. 결제 상태를 확인해 주세요.",
     );
     requireValue(text(body.name, 50), 400, "주문자 이름을 입력해 주세요.");
-    requireValue(
-      typeof body.phone === "string" && /^[+\d\s-]{8,24}$/.test(body.phone),
-      400,
-      "연락처를 확인해 주세요.",
-    );
-    const phone = body.phone.replace(/[+\s-]/g, "");
-    requireValue(/^\d{8,15}$/.test(phone), 400, "연락처를 확인해 주세요.");
+    const phone = normalizePhone(body.phone);
     requireValue(
       body.consent === true && typeof body.mobile === "boolean",
       400,
-      "계약·환불조건과 개인정보 수집에 동의해 주세요.",
+      invoice.terms
+        ? "계약·환불조건과 개인정보 수집에 동의해 주세요."
+        : "개인정보 수집·이용에 동의해 주세요.",
     );
     const attempt = {
       token: token(),
