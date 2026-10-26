@@ -50,5 +50,9 @@ sudo "$release/runtime/node" "$release/server/deploy/install-nginx.mjs"
 sudo systemctl enable --now ceetool-payments-backup.timer
 sudo systemctl start ceetool-payments-backup.service
 trap - ERR
+if ! PAYMENT_DB_PATH="$base/data/payments.sqlite" "$release/runtime/node" \
+    --env-file="$base/.env" "$release/server/src/reconcile.mjs"; then
+    echo "Payment receipt reconciliation is incomplete. Existing transactions remain protected; inspect reconciliation logs before retrying after at least one minute." >&2
+fi
 # Keep the active release and two previous, explicitly SHA-named release directories.
 "$release/runtime/node" "$release/server/deploy/install-nginx.mjs" --prune "$release" "$previous"

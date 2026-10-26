@@ -61,8 +61,31 @@ export function initialFields(config, invoice, attempt, mobile) {
   };
 }
 
+async function readResult(response) {
+  if (!response.ok) throw new Error("PAYSM_HTTP_ERROR");
+  const raw = await response.text();
+  if (Buffer.byteLength(raw) > 65536)
+    throw new Error("PAYSM_RESPONSE_TOO_LARGE");
+  const result = JSON.parse(raw);
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error("PAYSM_INVALID_RESPONSE");
+  }
+  return result;
+}
+
 export function createPaysm(config, fetcher = fetch) {
   return {
+    async receipt(tid) {
+      const url = new URL("/receipt.do", PAYSM_BASE_URL);
+      url.search = new URLSearchParams({ tid, mid: config.mid }).toString();
+      return readResult(
+        await fetcher(url.href, {
+          method: "GET",
+          redirect: "error",
+          signal: AbortSignal.timeout(15000),
+        }),
+      );
+    },
     async approve(auth) {
       const fields = {
         tid: auth.tid,
@@ -87,15 +110,7 @@ export function createPaysm(config, fetcher = fetch) {
         redirect: "error",
         signal: AbortSignal.timeout(15000),
       });
-      if (!response.ok) throw new Error("PAYSM_HTTP_ERROR");
-      const raw = await response.text();
-      if (Buffer.byteLength(raw) > 65536)
-        throw new Error("PAYSM_RESPONSE_TOO_LARGE");
-      const result = JSON.parse(raw);
-      if (!result || typeof result !== "object" || Array.isArray(result)) {
-        throw new Error("PAYSM_INVALID_RESPONSE");
-      }
-      return result;
+      return readResult(response);
     },
   };
 }

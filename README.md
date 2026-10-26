@@ -112,10 +112,11 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
 동일 주문의 중복 요청은 재승인하지 않으며 응답 유실이나 서버 재시작은 **확인 중**으로 남깁니다.
 
 통지는 해시·거래번호·금액·중복·순서를 검증합니다.
-문서상 명확한 카드 승인 통지 `3001`은 결과를 보완합니다.
-취소 통지 `2001`, 승인/취소 모두에 쓰이는 모호한 `0000`, 불일치/알 수 없는 코드는
-성공·환불로 추정하지 않고 관리자 확인 대상으로 표시합니다.
-MID의 `0000` 통지 구분 규칙이 별도로 발급되면 그 계약에 맞춰 처리기를 확장해야 합니다.
+카드 승인 통지 `3001` 또는 `0000` + `cancelYN=N`은 자동 완료 처리합니다.
+`0000` + `cancelYN=Y` 및 취소 통지 `2001`은 취소 확인 대상으로 남기며
+이후 도착한 승인 통지가 취소 거래를 다시 완료 처리하지 않습니다.
+`cancelYN`이 없거나 모순된 `0000`, 불일치/알 수 없는 코드는 성공·환불로 추정하지 않습니다.
+통지 원본 결과코드는 보존하고 내부 마지막 통지 코드는 승인 `3001`, 취소 `2001`로 정규화합니다.
 검증된 정상 승인 응답은 자동으로 결제 완료 처리하며 수동 완료 처리가 기본 흐름은 아닙니다.
 고객의 확인 중 화면에는 결제사명이나 운영자용 통지 안내를 노출하지 않습니다.
 결제창 자체에 표시되는 결제사·카드사 표시는 외부 서비스에서 관리합니다.
@@ -123,7 +124,24 @@ MID의 `0000` 통지 구분 규칙이 별도로 발급되면 그 계약에 맞�
 
 참고: [PaySM 인증결제](https://paysm.co.kr/developers/auth-payment.html),
 [공통 규칙](https://paysm.co.kr/developers/getting-started.html),
-[결과코드](https://paysm.co.kr/developers/result-codes.html).
+[결과코드](https://paysm.co.kr/developers/result-codes.html),
+[취소](https://paysm.co.kr/developers/cancel.html),
+[영수증 조회](https://paysm.co.kr/developers/receipt.html).
+
+배포 시 백업을 만든 뒤 기존 `확인 중` 거래를 `/receipt.do` GET으로 최대 5건 조회합니다.
+기존 `0000` 통지 또는 승인 응답 유실 건만 대상으로 하며 승인·취소 요청은 보내지 않습니다.
+조회 성공, 거래번호·금액·주문번호(제공 시) 일치 및 `TRX_ST_CD=0`을 확인해야 복구합니다.
+조회 중 새 통지가 도착하면 해당 결과로 덮어쓰지 않습니다. 기존 결제일은 유지하며 없으면 복구 시각을 기록합니다.
+취소·불일치·조회 실패는 명시적으로 기록하고 `확인 중`을 유지합니다.
+결과는 배포 로그의 `payment_reconciliation` 건수로 확인합니다.
+추가 확인은 호출 제한(MID당 분당 5회)을 고려해 최소 1분 후 서버에서 실행합니다.
+
+```sh
+PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
+  /home/ubuntu/ceetool-payments/current/runtime/node \
+  --env-file=/home/ubuntu/ceetool-payments/.env \
+  /home/ubuntu/ceetool-payments/current/server/src/reconcile.mjs
+```
 
 ### 운영 설정·저장·백업
 

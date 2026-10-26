@@ -1,0 +1,103 @@
+import { pathToFileURL } from "node:url";
+import { loadConfig, paymentReady } from "./config.mjs";
+import { openDatabase } from "./database.mjs";
+import { createPaysm } from "./paysm.mjs";
+
+export async function reconcileReviews(db, provider, logger = console) {
+  const invoices = db
+    .prepare(
+      `SELECT * FROM invoices WHERE state = 'review' AND tid IS NOT NULL
+       AND (noti_code IS NULL OR noti_code = '0000')
+       ORDER BY created_at LIMIT 5`,
+    )
+    .all();
+  const report = { checked: 0, recovered: 0, unresolved: 0, remaining: 0 };
+  for (const invoice of invoices) {
+    report.checked++;
+    try {
+      const result = await provider.receipt(invoice.tid);
+      const matches =
+        result.resultCd === "0000" &&
+        result.TID === invoice.tid &&
+        String(result.GOODS_AMT) === String(invoice.amount) &&
+        (!result.ORD_NO || result.ORD_NO === invoice.order_no) &&
+        (result.TRX_ST_CD === "0" || result.TRX_ST_CD === 0);
+      if (!matches) {
+        report.unresolved++;
+        logger.error(
+          JSON.stringify({
+            event: "payment_reconciliation_unconfirmed",
+            reason: "receipt_not_matching_approved_transaction",
+          }),
+        );
+        continue;
+      }
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const updated = db
+          .prepare(
+            `UPDATE invoices SET state = 'paid', paid_at = COALESCE(paid_at, ?),
+             note = '', noti_code = '3001'
+             WHERE token = ? AND state = 'review' AND tid = ?
+             AND noti_code IS ? AND noti_date IS ?`,
+          )
+          .run(
+            Date.now(),
+            invoice.token,
+            invoice.tid,
+            invoice.noti_code,
+            invoice.noti_date,
+          );
+        if (updated.changes) {
+          db.prepare(
+            "UPDATE attempts SET state = 'paid' WHERE invoice_token = ? AND state IN ('processing','review')",
+          ).run(invoice.token);
+          report.recovered++;
+        } else {
+          report.unresolved++;
+          logger.error(
+            JSON.stringify({
+              event: "payment_reconciliation_unconfirmed",
+              reason: "transaction_changed_during_lookup",
+            }),
+          );
+        }
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    } catch (error) {
+      report.unresolved++;
+      logger.error(
+        JSON.stringify({
+          event: "payment_reconciliation_unconfirmed",
+          reason: error.name,
+        }),
+      );
+    }
+  }
+  report.remaining = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM invoices WHERE state = 'review'
+       AND tid IS NOT NULL AND (noti_code IS NULL OR noti_code = '0000')`,
+    )
+    .get().count;
+  return report;
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  const config = loadConfig();
+  if (!paymentReady(config)) throw new Error("Payment credentials are missing");
+  const db = openDatabase(config.dbPath);
+  try {
+    const report = await reconcileReviews(db, createPaysm(config));
+    console.log(JSON.stringify({ event: "payment_reconciliation", ...report }));
+    if (report.remaining || report.unresolved) process.exitCode = 1;
+  } finally {
+    db.close();
+  }
+}

@@ -14,6 +14,7 @@ import {
 } from "../src/database.mjs";
 import { backupDatabase } from "../src/backup.mjs";
 import { createPaysm, ediDate, makeHash } from "../src/paysm.mjs";
+import { reconcileReviews } from "../src/reconcile.mjs";
 
 const environment = {
   PAYSM_MID: "TESTMID001",
@@ -125,8 +126,8 @@ async function fixture(t, options = {}) {
       state,
     };
   }
-  async function invoice(overrides = {}) {
-    const admin = await login();
+  async function invoice(overrides = {}, existingAdmin) {
+    const admin = existingAdmin || (await login());
     const created = await api("/admin/invoices", {
       method: "POST",
       ...admin,
@@ -236,6 +237,39 @@ test("PaySM SHA-256 format, Seoul clock, and fixed production URLs", async () =>
     ).approve({}),
     SyntaxError,
   );
+});
+
+test("receipt lookup uses only a bounded read-only GET to the fixed provider", async () => {
+  const sent = [];
+  const provider = createPaysm(
+    loadConfig(environment),
+    async (url, options) => {
+      sent.push({ url, options });
+      return new Response('{"resultCd":"0000","TRX_ST_CD":"0"}');
+    },
+  );
+  assert.equal((await provider.receipt("TESTMID001 &tid")).TRX_ST_CD, "0");
+  assert.equal(sent.length, 1);
+  const url = new URL(sent[0].url);
+  assert.equal(url.origin, "https://api.skyclassism.com");
+  assert.equal(url.pathname, "/receipt.do");
+  assert.equal(url.searchParams.get("tid"), "TESTMID001 &tid");
+  assert.equal(url.searchParams.get("mid"), environment.PAYSM_MID);
+  assert.equal(sent[0].options.method, "GET");
+  assert.equal(sent[0].options.redirect, "error");
+  assert.ok(sent[0].options.signal);
+  assert.equal(sent[0].options.body, undefined);
+  assert.ok(!sent[0].url.includes(environment.PAYSM_MERCHANT_KEY));
+  for (const response of [
+    new Response("{}", { status: 500 }),
+    new Response("[]"),
+    new Response("null"),
+    new Response("not-json"),
+  ]) {
+    await assert.rejects(
+      createPaysm(loadConfig(environment), async () => response).receipt("tid"),
+    );
+  }
 });
 
 test("missing credentials fail closed with explicit 503 responses", async (t) => {
@@ -653,6 +687,129 @@ test("verified notifications reconcile timeouts, reject forgery, and do not resu
   );
 });
 
+test("0000 approval notifications use cancelYN, deduplicate and cannot resurrect cancellation", async (t) => {
+  const f = await fixture(t);
+  const invoice = await f.invoice(),
+    checkout = await f.prepare(invoice),
+    auth = f.auth(checkout);
+  await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: auth,
+  });
+  const paidAt = (await f.api(`/invoices/${invoice.token}`)).data.paidAt;
+  const notify = (form) =>
+    f.api(`/notify/${checkout.attemptToken}`, {
+      method: "POST",
+      form,
+      origin: null,
+    });
+  const approved = f.notify(checkout, auth, {
+    resultCd: "0000",
+    cancelYN: "N",
+  });
+  assert.equal((await notify(approved)).status, 200);
+  assert.equal((await notify(approved)).status, 200);
+  let current = (await f.api(`/invoices/${invoice.token}`)).data;
+  assert.equal(current.state, "paid");
+  assert.equal(current.paidAt, paidAt);
+  assert.equal(
+    f.db.prepare("SELECT COUNT(*) AS n FROM notifications").get().n,
+    1,
+  );
+  await notify({ ...approved, cancelYN: "Y" });
+  assert.equal(
+    (await f.api(`/invoices/${invoice.token}`)).data.state,
+    "review",
+  );
+  assert.equal(
+    f.db.prepare("SELECT COUNT(*) AS n FROM notifications").get().n,
+    2,
+  );
+  await notify({
+    ...approved,
+    ediDate: "20990101000000",
+    hashStr: makeHash(
+      auth.mid,
+      "20990101000000",
+      auth.goodsAmt,
+      environment.PAYSM_MERCHANT_KEY,
+    ),
+  });
+  current = (await f.api(`/invoices/${invoice.token}`)).data;
+  assert.equal(current.state, "review");
+  assert.equal(f.calls(), 1);
+});
+
+test("0000 notifications arriving before approval returns preserve the final transaction state", async (t) => {
+  for (const cancelYN of ["N", "Y"]) {
+    await t.test(cancelYN, async (t) => {
+      let started, release;
+      const inFlight = new Promise((resolve) => {
+        started = resolve;
+      });
+      const f = await fixture(t, {
+        approve: (auth) => {
+          started();
+          return new Promise((resolve) => {
+            release = () =>
+              resolve({
+                resultCd: "0000",
+                mid: auth.mid,
+                amt: auth.goodsAmt,
+                tid: auth.tid,
+              });
+          });
+        },
+      });
+      const invoice = await f.invoice(),
+        checkout = await f.prepare(invoice),
+        auth = f.auth(checkout);
+      const approval = f.api(`/approve/${checkout.attemptToken}`, {
+        method: "POST",
+        body: auth,
+      });
+      await inFlight;
+      const notification = await f.api(`/notify/${checkout.attemptToken}`, {
+        method: "POST",
+        form: f.notify(checkout, auth, { resultCd: "0000", cancelYN }),
+        origin: null,
+      });
+      release();
+      assert.equal(notification.status, 200);
+      assert.equal(
+        (await approval).data.state,
+        cancelYN === "N" ? "paid" : "review",
+      );
+      assert.equal(f.calls(), 1);
+    });
+  }
+});
+
+test("contradictory cancellation flags cannot be followed by automatic reapproval", async (t) => {
+  const f = await fixture(t);
+  const invoice = await f.invoice(),
+    checkout = await f.prepare(invoice),
+    auth = f.auth(checkout);
+  await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: auth,
+  });
+  for (const fields of [
+    { resultCd: "3001", cancelYN: "Y" },
+    { resultCd: "0000", cancelYN: "N", ediDate: "20990101000000" },
+  ]) {
+    await f.api(`/notify/${checkout.attemptToken}`, {
+      method: "POST",
+      form: f.notify(checkout, auth, fields),
+      origin: null,
+    });
+    assert.equal(
+      (await f.api(`/invoices/${invoice.token}`)).data.state,
+      "review",
+    );
+  }
+});
+
 test("ambiguous 0000 notification is not mistaken for an approval or refund", async (t) => {
   const f = await fixture(t);
   const invoice = await f.invoice(),
@@ -699,6 +856,125 @@ test("customer review messages do not expose internal provider instructions", as
   const history = await f.api("/admin/invoices", admin);
   assert.match(JSON.stringify(history.data), /PaySM 관리자/);
   assert.equal(f.calls(), 1);
+});
+
+test("receipt reconciliation repairs only matching approved review transactions without charging", async (t) => {
+  const cases = [
+    { name: "approved", changes: {}, recovered: true },
+    {
+      name: "numeric status",
+      changes: { TRX_ST_CD: 0, GOODS_AMT: 1100 },
+      recovered: true,
+    },
+    { name: "cancelled", changes: { TRX_ST_CD: "1" } },
+    { name: "post-cancelled", changes: { TRX_ST_CD: "2" } },
+    { name: "wrong amount", changes: { GOODS_AMT: "1" } },
+    { name: "wrong transaction", changes: { TID: "wrong" } },
+    { name: "wrong order", changes: { ORD_NO: "wrong" } },
+    { name: "lookup failure", changes: { resultCd: "1004" } },
+    { name: "missing status", changes: { TRX_ST_CD: undefined } },
+    { name: "timeout", fails: true },
+    { name: "concurrent cancellation", cancel: true },
+  ];
+  for (const entry of cases) {
+    await t.test(entry.name, async (t) => {
+      const f = await fixture(t);
+      const invoice = await f.invoice(),
+        checkout = await f.prepare(invoice),
+        auth = f.auth(checkout);
+      await f.api(`/approve/${checkout.attemptToken}`, {
+        method: "POST",
+        body: auth,
+      });
+      const paidAt = (await f.api(`/invoices/${invoice.token}`)).data.paidAt;
+      await f.api(`/notify/${checkout.attemptToken}`, {
+        method: "POST",
+        form: f.notify(checkout, auth, { resultCd: "0000" }),
+        origin: null,
+      });
+      let lookups = 0;
+      const provider = {
+        receipt: async (tid) => {
+          lookups++;
+          assert.equal(tid, auth.tid);
+          if (entry.fails) throw new Error("simulated-timeout");
+          if (entry.cancel) {
+            await f.api(`/notify/${checkout.attemptToken}`, {
+              method: "POST",
+              form: f.notify(checkout, auth, {
+                resultCd: "0000",
+                cancelYN: "Y",
+              }),
+              origin: null,
+            });
+          }
+          return {
+            resultCd: "0000",
+            TID: auth.tid,
+            ORD_NO: invoice.orderNo,
+            GOODS_AMT: "1100",
+            TRX_ST_CD: "0",
+            ...entry.changes,
+          };
+        },
+      };
+      const logs = [];
+      const report = await reconcileReviews(f.db, provider, {
+        error: (message) => logs.push(message),
+      });
+      const current = (await f.api(`/invoices/${invoice.token}`)).data;
+      assert.equal(current.state, entry.recovered ? "paid" : "review");
+      assert.equal(report.checked, 1);
+      assert.equal(report.recovered, entry.recovered ? 1 : 0);
+      assert.equal(report.unresolved, entry.recovered ? 0 : 1);
+      assert.equal(logs.length, entry.recovered ? 0 : 1);
+      assert.equal(current.paidAt, paidAt);
+      assert.equal(lookups, 1);
+      assert.equal(f.calls(), 1);
+      if (entry.recovered) {
+        assert.equal(current.note, "");
+        assert.equal((await reconcileReviews(f.db, provider)).checked, 0);
+      }
+    });
+  }
+});
+
+test("receipt reconciliation limits each batch to five and never touches unpaid invoices", async (t) => {
+  const f = await fixture(t);
+  const admin = await f.login();
+  const pending = await f.invoice({}, admin);
+  for (let i = 0; i < 6; i++) {
+    const invoice = await f.invoice({}, admin),
+      checkout = await f.prepare(invoice),
+      auth = f.auth(checkout, `${environment.PAYSM_MID}-transaction-${i}`);
+    await f.api(`/approve/${checkout.attemptToken}`, {
+      method: "POST",
+      body: auth,
+    });
+    await f.api(`/notify/${checkout.attemptToken}`, {
+      method: "POST",
+      form: f.notify(checkout, auth, { resultCd: "0000" }),
+      origin: null,
+    });
+  }
+  let calls = 0;
+  const report = await reconcileReviews(f.db, {
+    receipt: async (tid) => {
+      calls++;
+      return { resultCd: "0000", TID: tid, GOODS_AMT: "1100", TRX_ST_CD: "0" };
+    },
+  });
+  assert.deepEqual(report, {
+    checked: 5,
+    recovered: 5,
+    unresolved: 0,
+    remaining: 1,
+  });
+  assert.equal(calls, 5);
+  assert.equal(
+    (await f.api(`/invoices/${pending.token}`)).data.state,
+    "pending",
+  );
 });
 
 test("SQLite survives reopen and removes personal data according to declared retention", () => {

@@ -651,6 +651,7 @@ export function createPaymentApp({
         body.amt,
         body.resultCd,
         body.hashStr,
+        ...(body.cancelYN === undefined ? [] : [body.cancelYN]),
       ]),
     );
     transaction(db, () => {
@@ -659,11 +660,15 @@ export function createPaymentApp({
         .run(fingerprint, invoice.token, body.resultCd, body.amt, Date.now());
       if (!inserted.changes) return;
       if (invoice.noti_date && body.ediDate < invoice.noti_date) return;
-      if (body.resultCd === "3001" && body.amt === String(invoice.amount)) {
+      const approval =
+        (body.resultCd === "0000" && body.cancelYN === "N") ||
+        (body.resultCd === "3001" &&
+          (body.cancelYN === undefined || body.cancelYN === "N"));
+      if (approval && body.amt === String(invoice.amount)) {
         if (!invoice.noti_code || invoice.noti_code === "3001") {
           db.prepare(
             "UPDATE invoices SET state = 'paid', paid_at = COALESCE(paid_at, ?), note = '', noti_code = ?, noti_date = ? WHERE token = ? AND state IN ('processing','review','paid')",
-          ).run(Date.now(), body.resultCd, body.ediDate, invoice.token);
+          ).run(Date.now(), "3001", body.ediDate, invoice.token);
           db.prepare("UPDATE attempts SET state = 'paid' WHERE token = ?").run(
             attempt.token,
           );
@@ -679,7 +684,9 @@ export function createPaymentApp({
           "UPDATE invoices SET state = 'review', note = ?, noti_code = ?, noti_date = ? WHERE token = ?",
         ).run(
           "서버 통지를 수신했습니다. PaySM 관리자에서 승인·취소 상태를 확인해야 합니다.",
-          body.resultCd,
+          ["0000", "3001"].includes(body.resultCd) && body.cancelYN === "Y"
+            ? "2001"
+            : body.resultCd,
           body.ediDate,
           invoice.token,
         );
