@@ -6,7 +6,7 @@ export const API_PATH = "/api/payments";
 export const GOOGLE_CALLBACK = `${PUBLIC_SITE_URL}${API_PATH}/admin/callback`;
 
 export function loadConfig(env = process.env) {
-  const port = Number(env.PORT || 3001);
+  const port = Number(env.PORT || 3888);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error("PORT must be an integer between 1 and 65535");
   }

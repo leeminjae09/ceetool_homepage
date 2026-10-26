@@ -44,7 +44,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable ceetool-payments
 sudo systemctl restart ceetool-payments
 curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 --max-time 5 \
-    http://127.0.0.1:3001/api/payments/health
+    http://127.0.0.1:3888/api/payments/health
 printf '\n'
 sudo "$release/runtime/node" "$release/server/deploy/install-nginx.mjs"
 sudo systemctl enable --now ceetool-payments-backup.timer

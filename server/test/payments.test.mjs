@@ -194,6 +194,12 @@ async function fixture(t, options = {}) {
   };
 }
 
+test("payment API defaults to port 3888 and validates port overrides", () => {
+  assert.equal(loadConfig({}).port, 3888);
+  assert.equal(loadConfig({ PORT: "3888" }).port, 3888);
+  assert.throws(() => loadConfig({ PORT: "65536" }), /PORT/);
+});
+
 test("PaySM SHA-256 format, Seoul clock, and fixed production URLs", async () => {
   assert.equal(
     makeHash("a", "b", "c", ""),

@@ -58,10 +58,12 @@ PAYSM_MID=발급받은_실가맹점_MID
 PAYSM_MERCHANT_KEY=발급받은_Merchant_Key
 GOOGLE_CLIENT_ID=Google_OAuth_웹_Client_ID
 GOOGLE_CLIENT_SECRET=Google_OAuth_Client_Secret
-ADMIN_GOOGLE_EMAILS=허용할_Google_이메일
+ADMIN_GOOGLE_EMAILS=john@ceetool.com
 ```
 
 이메일은 쉼표로 여러 개 지정할 수 있습니다. 목록이 비어 있으면 아무 계정도 허용하지 않습니다.
+`.env`에 `NODE_ENV`를 지정할 필요는 없습니다. 운영 서비스가 내부적으로 `production`을 강제하여
+HTTPS 전용 쿠키 등 운영 보안 설정을 유지합니다. 결제 API의 운영 포트는 `3888`입니다.
 Google Cloud Console에서 OAuth **웹 애플리케이션** 클라이언트를 만들고,
 승인된 리디렉션 URI를 정확히 등록합니다.
 
@@ -87,7 +89,7 @@ npm --prefix server start
 ```
 
 다른 터미널에서 `npm run dev`를 실행합니다.
-Vite가 `/api/payments`를 `127.0.0.1:3001`로 프록시합니다.
+Vite가 `/api/payments`를 `127.0.0.1:3888`로 프록시합니다.
 Google OAuth 반환 주소는 운영 사이트로 고정되어 실제 Google 로그인은 운영 주소에서 진행합니다.
 Node.js 22의 내장 SQLite를 사용하며 해당 런타임에서는 실험 기능 경고가 표시될 수 있습니다.
 
@@ -125,9 +127,12 @@ MID의 `0000` 통지 구분 규칙이 별도로 발급되면 그 계약에 맞�
 첫 배포가 비어 있는 `/home/ubuntu/ceetool-payments/.env`를 생성합니다.
 로컬 `.env`는 운영 서버로 자동 전송되지 않습니다. 서버에서만 실제 값을 입력한 뒤:
 
+기존 설정 파일은 배포가 덮어쓰지 않으므로 `ADMIN_GOOGLE_EMAILS=john@ceetool.com`,
+`PORT=3888`로 수정하고 `NODE_ENV=development` 줄은 삭제합니다.
+
 ```sh
 sudo systemctl restart ceetool-payments
-curl -fsS http://127.0.0.1:3001/api/payments/health
+curl -fsS http://127.0.0.1:3888/api/payments/health
 ```
 
 `paymentConfigured`와 `adminConfigured`가 모두 `true`인지 확인합니다.
