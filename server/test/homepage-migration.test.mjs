@@ -53,6 +53,10 @@ test("fresh schema contains all 6 categories, 28 projects, 12 media and 6 legacy
   const saved = await readHomepage(db);
   assert.deepEqual(validateContent(saved.content), saved.content);
   assert.equal(saved.content.categories.length, 6);
+  assert.equal(
+    saved.content.categories.flatMap((category) => category.features).length,
+    18,
+  );
   assert.equal(saved.content.projects.length, 28);
   assert.equal(
     saved.content.projects.flatMap((project) => project.media).length,
@@ -208,12 +212,39 @@ test("an intentionally empty legacy homepage stays empty instead of restoring de
   assert.deepEqual(saved.content.categories, []);
   assert.equal(saved.content.projects.length, 28);
 });
+test("malformed legacy JSON fails explicitly instead of silently publishing default content", async (t) => {
+  const db = await legacyDatabase(t);
+  await db.run(
+    "INSERT INTO settings (setting_key, value) VALUES ('homepage_v1', '{broken-json')",
+  );
+  await assert.rejects(migrate(db));
+  assert.equal(
+    await db.get(
+      "SELECT value FROM settings WHERE setting_key = 'homepage_schema'",
+    ),
+    undefined,
+  );
+  assert.equal(
+    (await db.get("SELECT COUNT(*) AS count FROM homepage_projects")).count,
+    0,
+  );
+});
 test("relational content writes roll back completely on a foreign-key failure", async (t) => {
   const db = await createTestDatabase(t);
   const saved = await readHomepage(db);
   const invalid = structuredClone(saved.content);
   invalid.categories[0].slides[0].projectId = "missing-project";
   await assert.rejects(saveHomepage(db, invalid, saved.revision), {
+    code: "ER_NO_REFERENCED_ROW_2",
+  });
+  assert.deepEqual(await readHomepage(db), saved);
+  const foreignMedia = structuredClone(saved.content);
+  foreignMedia.categories[0].slides[0].mediaId = foreignMedia.projects.find(
+    (project) =>
+      project.id !== foreignMedia.categories[0].slides[0].projectId &&
+      project.media.length,
+  ).media[0].id;
+  await assert.rejects(saveHomepage(db, foreignMedia, saved.revision), {
     code: "ER_NO_REFERENCED_ROW_2",
   });
   assert.deepEqual(await readHomepage(db), saved);

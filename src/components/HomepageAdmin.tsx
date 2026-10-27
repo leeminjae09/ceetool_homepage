@@ -745,6 +745,7 @@ export default function HomepageAdmin({
                       value={selectedProject.url ?? ""}
                       max={2048}
                       optional
+                      optional
                       onChange={(url) =>
                         project(projectId, (item) => ({
                           ...item,

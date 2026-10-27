@@ -214,7 +214,7 @@ test("homepage settings persist through real MySQL with authenticated writes and
   const saved = await f.api("/admin/homepage", {
     method: "PUT",
     ...admin,
-    body: { content, revision: null },
+    body: { content, revision: initial.revision },
   });
   assert.equal(saved.status, 200);
   assert.deepEqual((await f.api("/homepage")).data.content, content);

@@ -94,6 +94,31 @@ test("homepage validates two linked slides, HTTPS links, unique IDs and bounded 
     (v) => {
       v.categories[0].icon = "unknown";
     },
+    (v) => {
+      v.categories[0].slides[0].projectId = "missing";
+    },
+    (v) => {
+      v.projects[1].media = [
+        {
+          id: "other-project-media",
+          type: "image",
+          src: `${MEDIA_BASE}/projects/homepage/test.png`,
+          alt: "다른 프로젝트",
+        },
+      ];
+      v.categories[0].slides[0].mediaId = "other-project-media";
+    },
+    (v) => {
+      v.documents = [
+        {
+          id: "old-page",
+          title: "상세",
+          description: "소개",
+          details: "본문",
+          projectIds: ["missing"],
+        },
+      ];
+    },
   ]) {
     const invalid = content();
     change(invalid);
