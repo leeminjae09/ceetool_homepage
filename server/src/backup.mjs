@@ -51,15 +51,29 @@ export async function backupDatabase(config, destination) {
         "--hex-blob",
         config.database,
       ],
-      { stdio: ["ignore", "pipe", "ignore"] },
+      { stdio: ["ignore", "pipe", "pipe"] },
     );
+    let mysqlError;
+    child.stderr.on("data", (chunk) => {
+      const code = /\bERROR\s+(\d{4})\b/.exec(chunk.toString());
+      if (code) mysqlError = code[1];
+    });
     const exited = once(child, "close");
     const written = pipeline(
       child.stdout,
       createWriteStream(partial, { mode: 0o600 }),
     );
-    const [[code]] = await Promise.all([exited, written]);
-    if (code !== 0) throw new Error(`mysqldump failed with exit code ${code}`);
+    try {
+      const [[code]] = await Promise.all([exited, written]);
+      if (code !== 0)
+        throw new Error(
+          `mysqldump failed: exit ${code}, MySQL error ${mysqlError || "unknown"}`,
+        );
+    } catch (error) {
+      if (child.exitCode === null && !child.killed) child.kill();
+      await Promise.allSettled([exited, written]);
+      throw error;
+    }
     await rename(partial, file);
     await chmod(file, 0o600);
     const files = (await readdir(destination))

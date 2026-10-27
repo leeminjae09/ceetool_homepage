@@ -8,7 +8,7 @@
 - React 18, TypeScript, Vite 5, React Router
 - Tailwind CSS 3, Heroicons
 - 소개 사이트는 정적 파일로 배포
-- 결제는 별도 Node.js 22.13 이상 API, SQLite 영구 저장, Google 관리자 로그인
+- 결제는 별도 Node.js 22.13 이상 API, MySQL 8 영구 저장, Google 관리자 로그인
 
 ## 개발 및 검증
 
@@ -70,10 +70,19 @@ npm run preview
 ```dotenv
 PAYSM_MID=발급받은_실가맹점_MID
 PAYSM_MERCHANT_KEY=발급받은_Merchant_Key
+DB_HOST=localhost
+DB_USER=ceetool_user
+DB_PASS=
+DB_NAME=ceetool_payments
 GOOGLE_CLIENT_ID=Google_OAuth_웹_Client_ID
 GOOGLE_CLIENT_SECRET=Google_OAuth_Client_Secret
 ADMIN_GOOGLE_EMAILS=john@ceetool.com
 ```
+
+`DB_PASS`에는 직접 실제 비밀번호를 입력합니다. 커밋되는 설정 예시는 빈 값이며
+로컬 `server/.env`는 Git에서 제외됩니다. 기본 MySQL 포트는 3306이고 필요할 때만 `DB_PORT`를 추가합니다.
+`DB_PASS`가 없거나 DB 연결·스키마·이전 검증이 실패하면 서버는 시작하지 않습니다.
+테이블을 자동 생성하거나 SQLite로 돌아가는 폴백은 없습니다.
 
 이메일은 쉼표로 여러 개 지정할 수 있습니다. 목록이 비어 있으면 아무 계정도 허용하지 않습니다.
 `.env`에 `NODE_ENV`를 지정할 필요는 없습니다. 운영 서비스가 내부적으로 `production`을 강제하여
@@ -105,7 +114,8 @@ npm --prefix server start
 다른 터미널에서 `npm run dev`를 실행합니다.
 Vite가 `/api/payments`를 `127.0.0.1:3888`로 프록시합니다.
 Google OAuth 반환 주소는 운영 사이트로 고정되어 실제 Google 로그인은 운영 주소에서 진행합니다.
-Node.js 22의 내장 SQLite를 사용하며 해당 런타임에서는 실험 기능 경고가 표시될 수 있습니다.
+운영 데이터 저장은 `mysql2` 연결 풀과 InnoDB 트랜잭션을 사용합니다.
+SQLite 모듈은 기존 파일의 읽기 전용 이전 도구와 해당 테스트에서만 사용합니다.
 
 ```sh
 npm --prefix server run check
@@ -114,7 +124,11 @@ npm run lint
 npm run build
 ```
 
-테스트는 가짜 PaySM·Google·SES 응답과 임시 DB를 사용하며 실제 승인·과금·메일 발송을 하지 않습니다.
+테스트는 가짜 PaySM·Google·SES 응답과 실제 MySQL 8의 격리된 임시 DB를 사용하며
+실제 승인·과금·메일 발송을 하지 않습니다. 로컬에서는 별도 테스트 MySQL 인스턴스의
+`MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, `MYSQL_TEST_PASSWORD`를 설정합니다.
+테스트 계정은 임시 `ceetool_test_*` DB 생성·삭제 권한이 필요합니다.
+운영 계정/DB를 테스트에 사용하지 마세요. GitHub Actions는 별도의 MySQL 8 서비스 컨테이너를 사용합니다.
 금액 변조·중복/동시 승인·응답 유실·위조 통지·모바일 반환·세션/CSRF·허용 계정·보관/백업을 검사합니다.
 
 ### 결제 결과·통지 처리
@@ -151,8 +165,7 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
 추가 확인은 호출 제한(MID당 분당 5회)을 고려해 최소 1분 후 서버에서 실행합니다.
 
 ```sh
-PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
-  /home/ubuntu/ceetool-payments/current/runtime/node \
+/home/ubuntu/ceetool-payments/current/runtime/node \
   --env-file=/home/ubuntu/ceetool-payments/.env \
   /home/ubuntu/ceetool-payments/current/server/src/reconcile.mjs
 ```
@@ -171,11 +184,12 @@ PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
   취소 통지는 별도로 알리며 환불 완료로 단정하지 않습니다. 최초 설치 전 과거 거래는 소급 발송하지 않습니다.
 - PC 결제창 실패·명시적 닫기 및 모바일 실패 반환은 **인증 실패·미완료**로 알립니다.
   브라우저 신고는 승인 여부의 근거로 사용하지 않습니다. 탭 강제 종료·통신 단절은 감지하지 못할 수 있습니다.
-- 결제 상태 변경과 메일 등록은 같은 SQLite 트랜잭션에서 처리합니다. SDK 호출은 별도 작업자가 수행하며,
+- 결제 상태 변경과 메일 등록은 같은 MySQL InnoDB 트랜잭션과 트리거에서 처리합니다. SDK 호출은 별도 작업자가 수행하며,
   SES 지연·오류로 결제 응답을 기다리게 하지 않습니다. 대기열은 재시작에도 유지됩니다.
 - 5초마다 최대 10건을 처리하고, 오류는 1분부터 지수 간격으로 최대 8회 시도합니다.
   중단된 발송은 1분 임대 만료 후 다시 처리합니다. 실패 소진 건은 버리지 않으며 관리자가 재시도할 수 있습니다.
   중복 승인·중복 통지는 같은 발송 건으로 통합합니다.
+  발송 건 선점은 `FOR UPDATE SKIP LOCKED`로 처리하며 네트워크 발송 중에는 DB 잠금을 유지하지 않습니다.
 - SES 수락 직후 서버가 중단되거나 응답을 잃으면 재시도 메일이 중복 도착할 수 있습니다.
   **발송 접수는 SES 수락이며 받은편지함 도착 보장이 아닙니다.** 반송·스팸 여부는 SES 지표와 수신함에서 확인합니다.
 - 메일에는 주문번호·제목·금액·발생 시각·관리자 주소만 포함합니다.
@@ -222,13 +236,65 @@ PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
 수동 상태 확인은 서버에서 다음 읽기 명령을 사용합니다.
 
 ```sh
-PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
-  /home/ubuntu/ceetool-payments/current/runtime/node \
+/home/ubuntu/ceetool-payments/current/runtime/node \
   --env-file=/home/ubuntu/ceetool-payments/.env \
   /home/ubuntu/ceetool-payments/current/server/src/email.mjs --status
 ```
 
 ### 운영 설정·저장·백업
+
+#### MySQL 최초 전환 순서
+
+이 전환은 `mysql-storage` 브랜치에서 검증하며, 이 브랜치의 CI는 운영에 배포하지 않습니다.
+아래 DB 준비가 끝난 후에만 `main`에 병합하여 배포합니다. 준비 중에는 기존 운영 서비스와 SQLite 파일을 유지합니다.
+
+1. MySQL **8.0.16 이상**에서 관리자가 저장소 루트의 [tables.sql](tables.sql)을 직접 실행합니다.
+   이 파일은 `ceetool_payments` DB, 8개 테이블, 결제 상태 알림 트리거를 생성합니다.
+   비밀번호나 사용자 생성 쿼리는 포함하지 않습니다.
+
+   ```sh
+   sudo mysql < tables.sql
+   ```
+
+   root 비밀번호 인증 방식이면 대신 `mysql -u root -p < tables.sql`을 사용합니다.
+   `ceetool_user`가 이미 생성되어 있는지 확인하고 해당 계정에 다음 권한을 부여합니다.
+   `TRIGGER`는 `mysqldump`에서 트리거까지 백업하기 위해 필요합니다.
+
+   ```sql
+   GRANT SELECT, INSERT, UPDATE, DELETE, TRIGGER
+     ON ceetool_payments.* TO 'ceetool_user'@'localhost';
+   ```
+
+   테이블 생성 SQL을 다시 실행할 때도 신규 결제를 차단하세요. 테이블은 삭제하지 않지만 트리거를 재생성합니다.
+2. **운영 서버** `/home/ubuntu/ceetool-payments/.env`에 아래 항목을 추가하고 비밀번호를 직접 입력합니다.
+   기존 결제·Google OAuth 설정은 그대로 보존합니다. 로컬 파일을 운영 `.env` 위에 덮어쓰지 마세요.
+
+   ```dotenv
+   DB_HOST=localhost
+   DB_USER=ceetool_user
+   DB_PASS=
+   DB_NAME=ceetool_payments
+   ```
+
+   비밀번호에 `#`, 공백 등이 있다면 Node 환경변수 파일 문법에 맞게 따옴표로 감싸세요.
+   비밀번호를 채팅·Git·명령행 인자로 전달하지 않습니다. 서버에는 MySQL 8의 `mysqldump`도 있어야 합니다.
+3. 준비가 완료된 후 `main`으로 병합해 배포합니다. 배포는 **현재 서비스 정지 전에**
+   MySQL 연결·스키마와 백업 도구 유무를 확인합니다. 미설정 상태에서는 기존 서비스를 건드리지 않고 중단합니다.
+4. 최초 전환에서는 잠시 결제 API를 정지하고 기존 SQLite의 일관성 백업을 생성한 다음,
+   [이전 도구](server/src/migrate-sqlite.mjs)가 8개 테이블 전체를 하나의 MySQL 트랜잭션으로 복사합니다.
+   결제 링크 토큰·거래 내역·기본 조건·세션·메일 대기열을 보존하고 테이블별 건수와 내용 SHA-256을 대조합니다.
+   기존 완료 거래의 메일을 새로 생성하지 않습니다. 소스 SQLite는 읽기 전용이며 파일을 삭제하지 않습니다.
+5. 대상 DB가 비어 있지 않거나 내용이 다르면 덮어쓰지 않고 실패합니다. 복사·검증 실패 시 MySQL 변경은 롤백합니다.
+   같은 소스의 완료된 이전을 반복해도 데이터를 다시 쓰지 않으며, 다른 소스는 거부합니다.
+   서비스 시작은 이전 완료 표식을 확인해야 하므로 빈 MySQL로 잘못 시작할 수 없습니다.
+6. MySQL 백업을 생성한 후 새 서비스를 시작합니다. MySQL 활성화 후 오류가 나면
+   이전 SQLite 서비스로 자동 복귀하지 않고 정지하여 데이터가 두 DB로 나뉘는 것을 방지합니다.
+   이 경우 MySQL 거래를 확인하고 수정한 서비스를 재시작해야 합니다.
+
+최초 전환에서 서비스가 정지된 동안은 결제 API가 잠시 응답하지 않을 수 있습니다.
+서버 통지 재전송·승인 확인 상태를 점검하고 신규 결제를 다시 진행하세요.
+SQLite 백업은 역사적 안전 사본으로 남기며 MySQL 전환 후 계속 갱신하지 않습니다.
+MySQL 사용 이후의 데이터에 대해 과거 SQLite로 되돌리는 것은 복원이 아닙니다.
 
 첫 배포가 비어 있는 `/home/ubuntu/ceetool-payments/.env`를 생성합니다.
 로컬 `.env`는 운영 서버로 자동 전송되지 않습니다. 서버에서만 실제 값을 입력한 뒤:
@@ -246,14 +312,18 @@ curl -fsS http://127.0.0.1:3888/api/payments/health
 
 - 코드·격리된 Node 런타임: `/home/ubuntu/ceetool-payments/releases/<커밋>/`
 - 현재 코드: `/home/ubuntu/ceetool-payments/current`
-- 영구 DB: `/home/ubuntu/ceetool-payments/data/payments.sqlite`
-- 일일 일관성 백업: 같은 `data/backups` 아래, 최대 7개/7일 보관
+- 영구 DB: MySQL `ceetool_payments` (결제 서비스는 MySQL 데이터 파일을 직접 관리하지 않음)
+- 일일 일관성 백업: `/home/ubuntu/ceetool-payments/data/backups/payments-*.sql`, 최대 7개/7일 보관
 - 자동 백업: `ceetool-payments-backup.timer` (UTC 19시, 한국 시간 다음 날 04시 부근)
 
 DB·설정·백업은 웹 공개 폴더 및 코드 릴리스와 분리하며 다음 배포에 덮어쓰지 않습니다.
 운영 프로세스의 umask는 0077입니다. 이름·연락처는 미결제 만료 후 30일, 완료 거래는 결제 후 5년 기준으로 정리합니다.
 백업은 같은 서버에 있으므로 서버 자체 장애에 대비한 EBS 스냅샷 등 외부 백업도 별도로 운영하세요.
 복원할 때는 신규 결제를 차단하고 PaySM 거래와 대조해야 하며 과거 미결제 상태를 그대로 재개하면 안 됩니다.
+백업은 `mysqldump --single-transaction`을 사용하며 발송 대기열·트리거도 포함합니다.
+인증 정보는 권한 0600의 임시 옵션 파일로 전달하고 종료 시 제거하며 명령행 인자에 비밀번호를 넣지 않습니다.
+실패한 덤프는 정상 `.sql`로 남기지 않습니다. 복원은 서비스 정지 및 별도 안전 백업 후 관리자가 실행합니다.
+덤프에는 트리거와 DEFINER 정보가 있으므로 관리자 권한이 필요할 수 있습니다.
 
 ## 콘텐츠 수정
 

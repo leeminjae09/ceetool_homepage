@@ -52,6 +52,7 @@ jobs:
         run: |
           npm ci --prefix server --ignore-scripts
           npm --prefix server run check
+          bash -n server/deploy/deploy.sh
           npm --prefix server test
 
       - name: Build production files

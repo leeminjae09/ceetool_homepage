@@ -829,12 +829,13 @@ test("default terms are admin-only, explicitly saved and never rewrite issued in
 test("history is server-paginated by twenty with literal search and derived expiry filters", async (t) => {
   const f = await fixture(t);
   const admin = await f.login();
-  const insert = f.db.prepare(`INSERT INTO invoices
+  const insert = `INSERT INTO invoices
     (token, order_no, title, amount, tax_type, terms, expires_at, created_at, buyer_name, buyer_phone)
-    VALUES (?, ?, ?, 1000, 'taxable', '', ?, ?, ?, ?)`);
+    VALUES (?, ?, ?, 1000, 'taxable', '', ?, ?, ?, ?)`;
   const now = Date.now();
   for (let i = 0; i < 42; i++) {
-    insert.run(
+    await f.db.run(
+      insert,
       `history-${i}`,
       `ORDER-${i}`,
       i === 0 ? "특수 %_" : `프로젝트 ${i}`,

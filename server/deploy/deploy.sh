@@ -7,16 +7,21 @@ release="$base/releases/$sha"
 test -x "$release/runtime/node"
 test -f "$release/server/src/index.mjs"
 if [ "$(uname -m)" != "x86_64" ]; then
-    echo "The bundled runtime requires x86_64. Build a runtime matching this host before deploying." >&2
+    echo "The bundled runtime requires x86_64." >&2
     exit 1
 fi
 mkdir -p "$base/data"
 chmod 700 "$base" "$base/data"
 if [ ! -f "$base/.env" ]; then
     install -m 600 "$release/server/.env.example" "$base/.env"
-    echo "Created empty payment settings. Configure MID, Merchant Key, Google OAuth and administrator emails on the server."
 fi
 chmod 600 "$base/.env"
+for entry in DB_HOST=localhost DB_USER=ceetool_user DB_PASS= DB_NAME=ceetool_payments; do
+    key="${entry%%=*}"
+    if ! grep -q "^${key}=" "$base/.env"; then
+        printf '\n%s\n' "$entry" >> "$base/.env"
+    fi
+done
 previous=""
 if [ -L "$base/current" ]; then
     previous="$(readlink -f "$base/current")"
@@ -24,37 +29,53 @@ elif [ -e "$base/current" ]; then
     echo "Refusing to replace a non-symlink payment release pointer." >&2
     exit 1
 fi
-ln -sfnT "$release" "$base/current-$sha"
-mv -Tf "$base/current-$sha" "$base/current"
+# These checks must succeed before stopping the existing service.
+"$release/runtime/node" --env-file="$base/.env" "$release/server/src/database.mjs" --schema-only
+command -v mysqldump >/dev/null
+mysql_started=false
 rollback() {
-    echo "Payment deployment failed; restoring the previous payment release if present." >&2
+    echo "Payment deployment failed." >&2
     if [ -n "$previous" ] && [ -d "$previous" ] && [ "$previous" != "$release" ]; then
+        if [ "$mysql_started" = true ] && [ ! -f "$previous/server/src/migrate-sqlite.mjs" ]; then
+            echo "MySQL has been activated. Refusing to resume SQLite and split payment records; inspect the MySQL service before restarting." >&2
+            sudo systemctl stop ceetool-payments
+            return
+        fi
         ln -sfnT "$previous" "$base/rollback-$sha"
         mv -Tf "$base/rollback-$sha" "$base/current"
+        sudo install -m 644 "$previous/server/deploy/ceetool-payments.service" /etc/systemd/system/ceetool-payments.service
+        sudo systemctl daemon-reload
         sudo systemctl restart ceetool-payments
-    else
-        sudo systemctl stop ceetool-payments
     fi
 }
 trap 'rollback; exit 1' ERR
+sudo systemctl stop ceetool-payments
+if [ -n "$previous" ] && [ ! -f "$previous/server/src/migrate-sqlite.mjs" ]; then
+    test -f "$base/data/payments.sqlite"
+    PAYMENT_DB_PATH="$base/data/payments.sqlite" "$previous/runtime/node" \
+        --env-file="$base/.env" "$previous/server/src/backup.mjs"
+    "$release/runtime/node" --env-file="$base/.env" "$release/server/src/migrate-sqlite.mjs" \
+        --source "$base/data/payments.sqlite" --offline
+fi
+"$release/runtime/node" --env-file="$base/.env" "$release/server/src/database.mjs"
+"$release/runtime/node" --env-file="$base/.env" "$release/server/src/backup.mjs"
+ln -sfnT "$release" "$base/current-$sha"
+mv -Tf "$base/current-$sha" "$base/current"
 sudo install -m 644 "$release/server/deploy/ceetool-payments.service" /etc/systemd/system/ceetool-payments.service
 sudo install -m 644 "$release/server/deploy/ceetool-payments-backup.service" /etc/systemd/system/ceetool-payments-backup.service
 sudo install -m 644 "$release/server/deploy/ceetool-payments-backup.timer" /etc/systemd/system/ceetool-payments-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl enable ceetool-payments
+mysql_started=true
 sudo systemctl restart ceetool-payments
 curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2 --max-time 5 \
     http://127.0.0.1:3888/api/payments/health
 printf '\n'
 sudo "$release/runtime/node" "$release/server/deploy/install-nginx.mjs"
 sudo systemctl enable --now ceetool-payments-backup.timer
-sudo systemctl start ceetool-payments-backup.service
 trap - ERR
-if ! PAYMENT_DB_PATH="$base/data/payments.sqlite" "$release/runtime/node" \
-    --env-file="$base/.env" "$release/server/src/reconcile.mjs"; then
-    echo "Payment receipt reconciliation is incomplete. Existing transactions remain protected; inspect reconciliation logs before retrying after at least one minute." >&2
+if ! "$release/runtime/node" --env-file="$base/.env" "$release/server/src/reconcile.mjs"; then
+    echo "Payment receipt reconciliation is incomplete. Inspect reconciliation logs before retrying after at least one minute." >&2
 fi
-PAYMENT_DB_PATH="$base/data/payments.sqlite" "$release/runtime/node" \
-    --env-file="$base/.env" "$release/server/src/email.mjs" --status
-# Keep the active release and two previous, explicitly SHA-named release directories.
+"$release/runtime/node" --env-file="$base/.env" "$release/server/src/email.mjs" --status
 "$release/runtime/node" "$release/server/deploy/install-nginx.mjs" --prune "$release" "$previous"
