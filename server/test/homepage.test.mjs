@@ -27,27 +27,40 @@ function content() {
         featured: false,
         title: "결제 시스템",
         tagline: "결제부터 정산까지",
+        description: "결제 시스템 개발",
         features: ["카드·해외 결제"],
         slides: [
           {
             label: "결제",
-            project: {
-              name: "C9Pro",
-              description: "카드·USDT·PayPal·멤버십 연동",
-              url: "https://c9-pro.com/",
-              portfolioId: "c9pro",
-            },
+            projectId: "c9pro",
           },
           {
             label: "플러그인",
-            project: {
-              name: "ForYouPay",
-              description: "우커머스 통합결제 플러그인",
-            },
+            projectId: "foryou",
           },
         ],
       },
     ],
+    projects: [
+      {
+        id: "c9pro",
+        name: "C9Pro",
+        description: "카드·USDT·PayPal·멤버십 연동",
+        details: "결제 및 멤버십",
+        url: "https://c9-pro.com/",
+        archive: false,
+        media: [],
+      },
+      {
+        id: "foryou",
+        name: "ForYouPay",
+        description: "우커머스 통합결제 플러그인",
+        details: "결제 플러그인 개발",
+        archive: true,
+        media: [],
+      },
+    ],
+    documents: [],
   };
 }
 test("homepage validates two linked slides, HTTPS links, unique IDs and bounded storage", () => {
@@ -60,14 +73,17 @@ test("homepage validates two linked slides, HTTPS links, unique IDs and bounded 
       v.categories.push(v.categories[0]);
     },
     (v) => {
-      v.categories[0].slides[0].project.url = "javascript:alert(1)";
+      v.projects[0].url = "javascript:alert(1)";
     },
     (v) => {
-      v.categories[0].slides[0].media = {
-        type: "image",
-        alt: "unsafe",
-        src: "https://other.invalid/file.svg",
-      };
+      v.projects[0].media = [
+        {
+          id: "unsafe-media",
+          type: "image",
+          alt: "unsafe",
+          src: "https://other.invalid/file.svg",
+        },
+      ];
     },
     (v) => {
       v.categories[0].features = [];
@@ -92,7 +108,10 @@ test("homepage validates two linked slides, HTTPS links, unique IDs and bounded 
   });
 
   assert.throws(() => validateContent(many), /너무 큽니다/);
-  assert.deepEqual(validateContent({ categories: [] }), { categories: [] });
+  assert.deepEqual(
+    validateContent({ categories: [], projects: [], documents: [] }),
+    { categories: [], projects: [], documents: [] },
+  );
 });
 
 test("upload limit accepts exactly 100MB and rejects 100MB plus one byte", async (t) => {
@@ -133,15 +152,16 @@ test("upload limit accepts exactly 100MB and rejects 100MB plus one byte", async
 });
 test("homepage permits uploaded images and videos with optional posters, but not active content", () => {
   const value = content();
-  value.categories[0].slides[0].media = {
-    type: "video",
-    src: `${MEDIA_BASE}/projects/homepage/test.mp4`,
-    alt: "시연",
-  };
-  assert.equal(
-    validateContent(value).categories[0].slides[0].media.type,
-    "video",
-  );
+  value.projects[0].media = [
+    {
+      id: "video-1",
+      type: "video",
+      src: `${MEDIA_BASE}/projects/homepage/test.mp4`,
+      alt: "시연",
+    },
+  ];
+  value.categories[0].slides[0].mediaId = "video-1";
+  assert.equal(validateContent(value).projects[0].media[0].type, "video");
   assert.ok(matchesMediaType(png, "image/png"));
   assert.ok(matchesMediaType(Buffer.from([255, 216, 255, 1]), "image/jpeg"));
   assert.ok(matchesMediaType(Buffer.from("GIF89a"), "image/gif"));
@@ -164,7 +184,7 @@ test("homepage permits uploaded images and videos with optional posters, but not
   assert.equal(matchesMediaType(png, "image/svg+xml"), false);
 });
 async function fixture(t, options = {}) {
-  let saved;
+  let saved = { revision: "initial", content: content() };
   const db = {
     async get() {
       return saved ? { value: saved } : undefined;
@@ -188,6 +208,16 @@ async function fixture(t, options = {}) {
   };
   mountHomepage(app, {
     db,
+    store: {
+      async read() {
+        return structuredClone(saved);
+      },
+      async save(content, revision) {
+        if (revision !== saved.revision) return null;
+        saved = { revision: `${saved.revision}-updated`, content };
+        return structuredClone(saved);
+      },
+    },
     admin: requireHeader("cookie", "admin=test"),
     csrf: requireHeader("x-csrf-token", "test"),
     sameOrigin: requireHeader("origin", "https://ceetool.com"),
@@ -214,8 +244,8 @@ async function fixture(t, options = {}) {
 test("homepage routes authenticate writes, preserve revisions and hide unpublished categories", async (t) => {
   const f = await fixture(t);
   assert.deepEqual(await (await fetch(`${f.base}/homepage`)).json(), {
-    revision: null,
-    content: null,
+    revision: "initial",
+    content: content(),
   });
   assert.equal((await fetch(`${f.base}/admin/homepage`)).status, 401);
   const put = (body, headers = f.headers) =>
@@ -233,7 +263,7 @@ test("homepage routes authenticate writes, preserve revisions and hide unpublish
     ).status,
     403,
   );
-  const first = await put({ content: content(), revision: null });
+  const first = await put({ content: content(), revision: "initial" });
   assert.equal(first.status, 200);
   const saved = await first.json();
   assert.equal((await put({ content: content(), revision: null })).status, 409);

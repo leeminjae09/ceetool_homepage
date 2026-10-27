@@ -9,14 +9,13 @@ import { A11y } from "swiper/modules";
 import type { Swiper as SwiperInstance } from "swiper";
 import type { Service } from "app/services";
 import { categoryService, type HomepageContent } from "app/homepage-api";
-import type { PortfolioProjectId } from "app/portfolio";
 import Card, { ProjectCaption } from "components/organisms/card/card";
 import "swiper/css";
 import "swiper/css/a11y";
 
 interface ServiceShowcaseProps {
   dialogOpen: boolean;
-  onProjectSelect: (id: PortfolioProjectId) => void;
+  onProjectSelect: (id: string) => void;
   content: HomepageContent;
 }
 
@@ -247,7 +246,7 @@ export default function ServiceShowcase({
           .map((category, index) => (
             <ServiceRow
               key={category.id}
-              service={categoryService(category)}
+              service={categoryService(category, content)}
               index={index}
               onProjectSelect={onProjectSelect}
               onVideoPlay={pauseVideos}

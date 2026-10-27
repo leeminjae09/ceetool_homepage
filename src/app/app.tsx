@@ -5,17 +5,12 @@ import {
   Route,
   useLocation,
 } from "react-router-dom";
-import { useEffect, useState } from "react";
-import {
-  defaultHomepageContent,
-  homepageApi,
-  type HomepageContent,
-} from "app/homepage-api";
+import { useState } from "react";
+import { projectDetails } from "app/homepage-api";
+import { useHomepageContent } from "hooks/useHomepageContent";
 import DocumentationPage from "components/ProjectPage";
 import ProjectDialog from "components/ProjectDialog";
 import ServiceShowcase from "components/ServiceShowcase";
-import { additionalProjects } from "app/services";
-import { portfolioProjects, type PortfolioProjectId } from "app/portfolio";
 import BusinessInfo from "components/BusinessInfo";
 import {
   PaymentAdminPage,
@@ -24,39 +19,21 @@ import {
 } from "components/PaymentPages";
 
 function Home() {
-  const [content, setContent] = useState<HomepageContent | null>(null);
-  const [contentError, setContentError] = useState("");
-  const [contentRevision, setContentRevision] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setContentError("");
-    void homepageApi
-      .load()
-      .then((saved) => {
-        if (active) setContent(saved.content ?? defaultHomepageContent);
-      })
-      .catch((error: unknown) => {
-        console.error(
-          "Homepage settings request failed",
-          error instanceof Error ? error.name : "unknown",
-        );
-        if (active)
-          setContentError(
-            "홈페이지 구성을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [contentRevision]);
+  const { content, error: contentError, retry } = useHomepageContent();
+  const additionalProjects =
+    content?.projects.filter((project) => project.archive) ?? [];
   const [selectedProject, setSelectedProject] = useState<{
-    id: PortfolioProjectId;
+    id: string;
     mediaSrc?: string;
   } | null>(null);
 
-  function openProject(id: PortfolioProjectId, mediaSrc?: string) {
+  function openProject(id: string, mediaSrc?: string) {
     setSelectedProject({ id, mediaSrc });
   }
+  const selectedData = content?.projects.find(
+    (project) => project.id === selectedProject?.id,
+  );
+  const selectedDetails = selectedData ? projectDetails(selectedData) : null;
 
   return (
     <main className="portfolio-home">
@@ -114,7 +91,7 @@ function Home() {
             <button
               type="button"
               className="mt-2 min-h-11 text-blue-300 underline"
-              onClick={() => setContentRevision((value) => value + 1)}
+              onClick={retry}
             >
               다시 시도
             </button>
@@ -153,10 +130,10 @@ function Home() {
           showAdminLink
           className="space-y-1 border-t border-gray-800 py-8 text-center text-xs leading-relaxed text-gray-400"
         />
-        {selectedProject && (
+        {selectedProject && selectedDetails && (
           <ProjectDialog
             key={`${selectedProject.id}:${selectedProject.mediaSrc || ""}`}
-            project={portfolioProjects[selectedProject.id]}
+            project={selectedDetails}
             initialMediaSrc={selectedProject.mediaSrc}
             onClose={() => setSelectedProject(null)}
           />

@@ -6,10 +6,10 @@ import multer from "multer";
 import { rateLimit } from "express-rate-limit";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { API_PATH } from "./config.mjs";
+import { readHomepage, saveHomepage } from "./homepage-store.mjs";
 
 export const MEDIA_BASE = "https://d2fgd6q9oovwa9.cloudfront.net";
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
-const key = "homepage_v1";
 const icons = [
   "shopping",
   "payment",
@@ -71,18 +71,71 @@ export function validateContent(value) {
   check(
     record(value) &&
       Array.isArray(value.categories) &&
-      value.categories.length <= 24,
-    "카테고리는 최대 24개까지 설정할 수 있습니다.",
+      value.categories.length <= 24 &&
+      Array.isArray(value.projects) &&
+      value.projects.length <= 200 &&
+      Array.isArray(value.documents) &&
+      value.documents.length <= 24,
+    "카테고리·프로젝트·상세 페이지 목록을 확인해 주세요.",
   );
+  const id = (value, ids) => {
+    const result = text(value, 64, "ID");
+    check(
+      /^[A-Za-z0-9_-]+$/.test(result) && !ids.has(result),
+      "ID가 중복되거나 올바르지 않습니다.",
+    );
+    ids.add(result);
+    return result;
+  };
+  const projectIds = new Set(),
+    mediaIds = new Set();
+  const projects = value.projects.map((project) => {
+    check(
+      record(project) &&
+        typeof project.archive === "boolean" &&
+        Array.isArray(project.media) &&
+        project.media.length <= 30,
+      "프로젝트 정보를 확인해 주세요.",
+    );
+    const result = {
+      id: id(project.id, projectIds),
+      name: text(project.name, 100, "프로젝트명"),
+      description: text(project.description, 250, "프로젝트 설명"),
+      details: text(project.details, 4000, "상세 설명"),
+      archive: project.archive,
+      media: project.media.map((media) => {
+        check(
+          record(media) && ["image", "video"].includes(media.type),
+          "미디어 종류를 확인해 주세요.",
+        );
+        const item = {
+          id: id(media.id, mediaIds),
+          type: media.type,
+          src: url(media.src, true),
+          alt: text(media.alt, 300, "대체 설명"),
+        };
+        if (media.poster) {
+          check(
+            media.type === "video",
+            "영상에만 썸네일을 지정할 수 있습니다.",
+          );
+          item.poster = url(media.poster, true);
+        }
+        return item;
+      }),
+    };
+    if (project.url) result.url = url(project.url);
+    return result;
+  });
   const ids = new Set();
   const categories = value.categories.map((category) => {
     check(record(category), "카테고리 정보를 확인해 주세요.");
-    const id = text(category.id, 64, "카테고리 ID");
+    const categoryId = text(category.id, 64, "카테고리 ID");
     check(
-      /^[A-Za-z0-9_-]+$/.test(id) && !ids.has(id),
+      /^[A-Za-z0-9_-]+$/.test(categoryId) && !ids.has(categoryId),
       "카테고리 ID가 중복되거나 올바르지 않습니다.",
     );
-    ids.add(id);
+    ids.add(categoryId);
     check(
       icons.includes(category.icon) &&
         typeof category.visible === "boolean" &&
@@ -100,55 +153,55 @@ export function validateContent(value) {
       "카테고리마다 슬라이드 2개를 설정해 주세요.",
     );
     return {
-      id,
+      id: categoryId,
       icon: category.icon,
       visible: category.visible,
       featured: category.featured,
       title: text(category.title, 40, "카테고리명"),
       tagline: text(category.tagline, 150, "한 줄 소개"),
+      description: text(category.description, 4000, "분야 설명"),
       features: category.features.map((feature) => text(feature, 150, "기능")),
       slides: category.slides.map((slide) => {
         check(
-          record(slide) && record(slide.project),
+          record(slide) && projectIds.has(slide.projectId),
           "슬라이드 정보를 확인해 주세요.",
         );
-        const project = {
-          name: text(slide.project.name, 100, "프로젝트명"),
-          description: text(slide.project.description, 250, "프로젝트 설명"),
+        const result = {
+          label: text(slide.label, 150, "화면 이름"),
+          projectId: slide.projectId,
         };
-        if (slide.project.url) project.url = url(slide.project.url);
-        if (slide.project.portfolioId !== undefined) {
+        if (slide.mediaId !== undefined) {
           check(
-            ["dswar", "shini", "c9pro"].includes(slide.project.portfolioId),
-            "기존 포트폴리오를 확인해 주세요.",
+            projects
+              .find((project) => project.id === slide.projectId)
+              .media.some((media) => media.id === slide.mediaId),
+            "슬라이드에는 선택한 프로젝트의 미디어만 지정할 수 있습니다.",
           );
-          project.portfolioId = slide.project.portfolioId;
-        }
-        const result = { label: text(slide.label, 150, "화면 이름"), project };
-        if (slide.media !== undefined) {
-          check(
-            record(slide.media) &&
-              ["image", "video"].includes(slide.media.type),
-            "미디어 종류를 확인해 주세요.",
-          );
-          result.media = {
-            type: slide.media.type,
-            src: url(slide.media.src, true),
-            alt: text(slide.media.alt, 300, "대체 설명"),
-          };
-          if (slide.media.poster) {
-            check(
-              slide.media.type === "video",
-              "영상에만 썸네일을 지정할 수 있습니다.",
-            );
-            result.media.poster = url(slide.media.poster, true);
-          }
+          result.mediaId = slide.mediaId;
         }
         return result;
       }),
     };
   });
-  const content = { categories };
+  const documentIds = new Set();
+  const documents = value.documents.map((document) => {
+    check(
+      record(document) &&
+        Array.isArray(document.projectIds) &&
+        document.projectIds.length <= 200 &&
+        new Set(document.projectIds).size === document.projectIds.length &&
+        document.projectIds.every((projectId) => projectIds.has(projectId)),
+      "상세 페이지의 프로젝트 연결을 확인해 주세요.",
+    );
+    return {
+      id: id(document.id, documentIds),
+      title: text(document.title, 100, "상세 페이지 제목"),
+      description: text(document.description, 4000, "상세 페이지 소개"),
+      details: text(document.details, 4000, "상세 페이지 본문"),
+      projectIds: document.projectIds,
+    };
+  });
+  const content = { categories, projects, documents };
   check(
     Buffer.byteLength(JSON.stringify(content), "utf8") <= 58000,
     "홈페이지 설정이 너무 큽니다. 문구나 카테고리를 줄여 주세요.",
@@ -205,21 +258,27 @@ export async function uploadHomepageFile(file) {
 
 export function mountHomepage(
   app,
-  { db, admin, csrf, sameOrigin, logger, uploadMedia = uploadHomepageFile },
+  {
+    db,
+    admin,
+    csrf,
+    sameOrigin,
+    logger,
+    uploadMedia = uploadHomepageFile,
+    store = {
+      read: () => readHomepage(db),
+      save: (content, revision) => saveHomepage(db, content, revision),
+    },
+  },
 ) {
-  const read = async () => {
-    const row = await db.get(
-      "SELECT value FROM settings WHERE setting_key = ?",
-      key,
-    );
-    return row ? JSON.parse(row.value) : { revision: null, content: null };
-  };
+  const read = () => store.read();
   app.get(`${API_PATH}/homepage`, async (req, res) => {
     const saved = await read();
     res.json({
       ...saved,
       content: saved.content
         ? {
+            ...saved.content,
             categories: saved.content.categories.filter(
               (category) => category.visible,
             ),
@@ -242,33 +301,12 @@ export function mountHomepage(
         "저장 버전을 확인해 주세요.",
       );
       const content = validateContent(req.body.content);
-      const saved = await db.transaction(async () => {
-        await db.run(
-          "INSERT IGNORE INTO settings (setting_key, value) VALUES (?, ?)",
-          key,
-          JSON.stringify({ revision: null, content: null }),
+      const saved = await store.save(content, req.body.revision);
+      if (!saved)
+        throw new HomepageError(
+          409,
+          "다른 창에서 설정이 변경되었습니다. 새로 불러온 뒤 다시 수정해 주세요.",
         );
-        const current = JSON.parse(
-          (
-            await db.get(
-              "SELECT value FROM settings WHERE setting_key = ? FOR UPDATE",
-              key,
-            )
-          ).value,
-        );
-        if (current.revision !== req.body.revision)
-          throw new HomepageError(
-            409,
-            "다른 창에서 설정이 변경되었습니다. 새로 불러온 뒤 다시 수정해 주세요.",
-          );
-        const next = { revision: randomUUID(), content };
-        await db.run(
-          "UPDATE settings SET value = ? WHERE setting_key = ?",
-          JSON.stringify(next),
-          key,
-        );
-        return next;
-      });
       res.json(saved);
     },
   );

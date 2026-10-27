@@ -65,6 +65,13 @@ export async function openDatabase(config) {
     );
     if (schema?.value !== "mysql-v1")
       throw new Error("Apply tables.sql before starting the payment server");
+    const homepage = await db.get(
+      "SELECT value FROM settings WHERE setting_key = 'homepage_schema'",
+    );
+    if (homepage?.value !== "relational-v1")
+      throw new Error(
+        "Apply migrations/20261027_001_relational_homepage.sql manually before deploying this version",
+      );
     return db;
   } catch (error) {
     await db.close();

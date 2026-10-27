@@ -1,5 +1,4 @@
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
-import { portfolioProjects, type PortfolioProjectId } from "app/portfolio";
 import type { Service, ServiceProject } from "app/services";
 
 export type CardProps = Pick<Service, "title" | "features">;
@@ -9,7 +8,7 @@ export function ProjectCaption({
   onProjectSelect,
 }: {
   project: ServiceProject;
-  onProjectSelect: (id: PortfolioProjectId) => void;
+  onProjectSelect: (id: string) => void;
 }) {
   return (
     <div className="inline-flex min-h-8 items-center gap-2 whitespace-nowrap text-xs leading-relaxed text-gray-400">
@@ -26,15 +25,20 @@ export function ProjectCaption({
           >
             {project.name}
           </button>
-          <a
-            href={project.url || portfolioProjects[project.portfolioId].url}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`${project.name} 사이트 방문 (새 창)`}
-            className="inline-flex min-h-8 items-center justify-center rounded text-blue-300 hover:text-blue-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
-          >
-            <ArrowTopRightOnSquareIcon className="h-4 w-4" aria-hidden="true" />
-          </a>
+          {project.url && (
+            <a
+              href={project.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${project.name} 사이트 방문 (새 창)`}
+              className="inline-flex min-h-8 items-center justify-center rounded text-blue-300 hover:text-blue-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+            >
+              <ArrowTopRightOnSquareIcon
+                className="h-4 w-4"
+                aria-hidden="true"
+              />
+            </a>
+          )}
         </>
       ) : project.url ? (
         <a

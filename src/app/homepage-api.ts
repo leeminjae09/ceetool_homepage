@@ -1,5 +1,13 @@
-import { services, type Service, type ServiceProject } from "app/services";
-import { portfolioProjects } from "app/portfolio";
+import {
+  ShoppingBagIcon,
+  CreditCardIcon,
+  ChatBubbleLeftRightIcon,
+  MegaphoneIcon,
+  Cog6ToothIcon,
+  ServerStackIcon,
+} from "@heroicons/react/24/outline";
+import type { Service, ServiceProject } from "app/services";
+import type { ProjectDetailsProps } from "components/organisms/project-details/project-details";
 import { request } from "app/payments-api";
 
 export const homepageIcons = [
@@ -12,96 +20,123 @@ export const homepageIcons = [
 ] as const;
 export type HomepageIcon = (typeof homepageIcons)[number];
 export interface HomepageMedia {
+  id: string;
   type: "image" | "video";
   src: string;
   alt: string;
   poster?: string;
 }
+export interface HomepageProject {
+  id: string;
+  name: string;
+  description: string;
+  details: string;
+  url?: string;
+  archive: boolean;
+  media: HomepageMedia[];
+}
 export interface HomepageSlide {
   label: string;
-  project: ServiceProject;
-  media?: HomepageMedia;
+  projectId: string;
+  mediaId?: string;
 }
 export interface HomepageCategory {
   id: string;
   title: string;
   tagline: string;
+  description: string;
   icon: HomepageIcon;
   visible: boolean;
   featured: boolean;
   features: string[];
   slides: [HomepageSlide, HomepageSlide];
 }
+export interface HomepageDocument {
+  id: string;
+  title: string;
+  description: string;
+  details: string;
+  projectIds: string[];
+}
 export interface HomepageContent {
   categories: HomepageCategory[];
+  projects: HomepageProject[];
+  documents: HomepageDocument[];
 }
 interface HomepageSnapshot {
-  revision: string | null;
-  content: HomepageContent | null;
+  revision: string;
+  content: HomepageContent;
 }
-
-const iconComponents: Record<HomepageIcon, Service["Icon"]> = {
-  shopping: services[0].Icon,
-  payment: services[1].Icon,
-  ai: services[2].Icon,
-  marketing: services[3].Icon,
-  automation: services[4].Icon,
-  finance: services[5].Icon,
+const iconComponents = {
+  shopping: ShoppingBagIcon,
+  payment: CreditCardIcon,
+  ai: ChatBubbleLeftRightIcon,
+  marketing: MegaphoneIcon,
+  automation: Cog6ToothIcon,
+  finance: ServerStackIcon,
 };
-export const defaultHomepageContent: HomepageContent = {
-  categories: services.map((service, index) => {
-    const slide = (item: Service["showcase"][number]): HomepageSlide => ({
-      ...item,
-      project: {
-        ...item.project,
-        ...(item.project.portfolioId
-          ? { url: portfolioProjects[item.project.portfolioId].url }
-          : {}),
-      },
-    });
+export function projectCaption(project: HomepageProject): ServiceProject {
+  return {
+    name: project.name,
+    description: project.description,
+    ...(project.url ? { url: project.url } : {}),
+    ...(project.media.length ? { portfolioId: project.id } : {}),
+  };
+}
+export function projectDetails(
+  project: HomepageProject,
+): ProjectDetailsProps | null {
+  const media = project.media.map(
+    (item): ProjectDetailsProps["media"][number] =>
+      item.type === "video"
+        ? { ...item, type: "video", poster: item.poster ?? "" }
+        : { ...item, type: "image" },
+  );
+  const first = media[0];
+  if (!first) return null;
+  return {
+    title: project.name,
+    description: project.details,
+    url: project.url,
+    media: [first, ...media.slice(1)],
+  };
+}
+export function categoryService(
+  category: HomepageCategory,
+  content: HomepageContent,
+): Service {
+  const slide = (item: HomepageSlide): Service["showcase"][number] => {
+    const project = content.projects.find(
+      (project) => project.id === item.projectId,
+    );
+    if (!project) throw new Error("Missing homepage project");
+    const media = project.media.find((media) => media.id === item.mediaId);
     return {
-      id: homepageIcons[index],
-      icon: homepageIcons[index],
-      title: service.title,
-      tagline: service.tagline,
-      visible: true,
-      featured: service.featured ?? false,
-      features: [...service.features],
-      slides: [slide(service.showcase[0]), slide(service.showcase[1])],
+      label: item.label,
+      project: projectCaption(project),
+      ...(media
+        ? {
+            media:
+              media.type === "video"
+                ? { ...media, type: "video", poster: media.poster ?? "" }
+                : { ...media, type: "image" },
+          }
+        : {}),
     };
-  }),
-};
-export function categoryService(category: HomepageCategory): Service {
-  const slide = (item: HomepageSlide): Service["showcase"][number] => ({
-    label: item.label,
-    project: item.project,
-    ...(item.media
-      ? {
-          media:
-            item.media.type === "video"
-              ? {
-                  ...item.media,
-                  type: "video",
-                  poster: item.media.poster ?? "",
-                }
-              : { ...item.media, type: "image" },
-        }
-      : {}),
-  });
+  };
   return {
     title: category.title,
     tagline: category.tagline,
-    description: category.tagline,
+    description: category.description,
     Icon: iconComponents[category.icon],
     featured: category.featured,
     features: category.features,
-    projects: category.slides.map((item) => item.project),
     showcase: [slide(category.slides[0]), slide(category.slides[1])],
   };
 }
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
-function isMedia(value: unknown): value is HomepageMedia {
+function isMedia(value: unknown): value is Omit<HomepageMedia, "id"> {
   return (
     record(value) &&
     (value.type === "image" || value.type === "video") &&
@@ -110,20 +145,28 @@ function isMedia(value: unknown): value is HomepageMedia {
     (value.poster === undefined || typeof value.poster === "string")
   );
 }
+function isProject(value: unknown): value is HomepageProject {
+  return (
+    record(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.description === "string" &&
+    typeof value.details === "string" &&
+    typeof value.archive === "boolean" &&
+    (value.url === undefined || typeof value.url === "string") &&
+    Array.isArray(value.media) &&
+    value.media.every(
+      (media) =>
+        record(media) && typeof media.id === "string" && isMedia(media),
+    )
+  );
+}
 function isSlide(value: unknown): value is HomepageSlide {
   return (
     record(value) &&
     typeof value.label === "string" &&
-    record(value.project) &&
-    typeof value.project.name === "string" &&
-    typeof value.project.description === "string" &&
-    (value.project.url === undefined ||
-      typeof value.project.url === "string") &&
-    (value.project.portfolioId === undefined ||
-      value.project.portfolioId === "dswar" ||
-      value.project.portfolioId === "shini" ||
-      value.project.portfolioId === "c9pro") &&
-    (value.media === undefined || isMedia(value.media))
+    typeof value.projectId === "string" &&
+    (value.mediaId === undefined || typeof value.mediaId === "string")
   );
 }
 function isCategory(value: unknown): value is HomepageCategory {
@@ -132,6 +175,7 @@ function isCategory(value: unknown): value is HomepageCategory {
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     typeof value.tagline === "string" &&
+    typeof value.description === "string" &&
     homepageIcons.some((icon) => icon === value.icon) &&
     typeof value.visible === "boolean" &&
     typeof value.featured === "boolean" &&
@@ -142,26 +186,59 @@ function isCategory(value: unknown): value is HomepageCategory {
     value.slides.every(isSlide)
   );
 }
-function isContent(value: unknown): value is HomepageContent {
+function isDocument(value: unknown): value is HomepageDocument {
   return (
     record(value) &&
-    Array.isArray(value.categories) &&
-    value.categories.every(isCategory)
+    typeof value.id === "string" &&
+    typeof value.title === "string" &&
+    typeof value.description === "string" &&
+    typeof value.details === "string" &&
+    Array.isArray(value.projectIds) &&
+    value.projectIds.every((id) => typeof id === "string")
+  );
+}
+function isContent(value: unknown): value is HomepageContent {
+  if (
+    !record(value) ||
+    !Array.isArray(value.categories) ||
+    !value.categories.every(isCategory) ||
+    !Array.isArray(value.projects) ||
+    !value.projects.every(isProject) ||
+    !Array.isArray(value.documents) ||
+    !value.documents.every(isDocument)
+  )
+    return false;
+  const projects = value.projects;
+  return (
+    value.categories.every((category) =>
+      category.slides.every((slide) => {
+        const project = projects.find(
+          (project) => project.id === slide.projectId,
+        );
+        return (
+          project &&
+          (!slide.mediaId ||
+            project.media.some((media) => media.id === slide.mediaId))
+        );
+      }),
+    ) &&
+    value.documents.every((document) =>
+      document.projectIds.every((id) =>
+        projects.some((project) => project.id === id),
+      ),
+    )
   );
 }
 function snapshot(value: unknown): HomepageSnapshot {
   if (
     !record(value) ||
-    (value.revision !== null && typeof value.revision !== "string") ||
-    (value.content !== null && !isContent(value.content))
+    typeof value.revision !== "string" ||
+    !isContent(value.content)
   ) {
     console.error("Invalid homepage API response");
     throw new Error("홈페이지 설정 응답을 확인할 수 없습니다.");
   }
-  return {
-    revision: value.revision,
-    content: value.content,
-  };
+  return { revision: value.revision, content: value.content };
 }
 export const homepageApi = {
   async load(admin = false): Promise<HomepageSnapshot> {
@@ -169,7 +246,7 @@ export const homepageApi = {
   },
   async save(
     content: HomepageContent,
-    revision: string | null,
+    revision: string,
     csrf: string,
   ): Promise<HomepageSnapshot> {
     return snapshot(
@@ -180,7 +257,7 @@ export const homepageApi = {
       }),
     );
   },
-  async upload(file: File, csrf: string): Promise<HomepageMedia> {
+  async upload(file: File, csrf: string): Promise<Omit<HomepageMedia, "id">> {
     const body = new FormData();
     body.append("file", file);
     const value = await request("/admin/homepage/media", {
