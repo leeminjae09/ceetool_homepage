@@ -2,7 +2,7 @@ name: CI/CD SSH Deploy
 
 on:
   push:
-    branches: ["main", "mysql-storage"]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:

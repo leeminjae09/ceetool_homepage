@@ -9,7 +9,7 @@ export const token = () => randomBytes(32).toString("base64url");
 export const digest = (value) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-export async function openDatabase(config, { requireMigration = true } = {}) {
+export async function openDatabase(config) {
   if (!config.password) throw new Error("DB_PASS is required");
   const pool = mysql.createPool({
     ...config,
@@ -65,13 +65,6 @@ export async function openDatabase(config, { requireMigration = true } = {}) {
     );
     if (schema?.value !== "mysql-v1")
       throw new Error("Apply tables.sql before starting the payment server");
-    const migration = await db.get(
-      "SELECT value FROM settings WHERE setting_key = 'storage_migration'",
-    );
-    if (requireMigration && migration?.value !== "sqlite-v1")
-      throw new Error(
-        "Run migrate-sqlite.mjs before starting the payment server",
-      );
     return db;
   } catch (error) {
     await db.close();
@@ -150,15 +143,9 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  if (process.argv[2] && process.argv[2] !== "--schema-only")
-    throw new Error("Use --schema-only to check the schema before migration");
-  const db = await openDatabase(loadConfig().database, {
-    requireMigration: process.argv[2] !== "--schema-only",
-  });
+  if (process.argv[2])
+    throw new Error("This command does not accept arguments");
+  const db = await openDatabase(loadConfig().database);
   await db.close();
-  console.log(
-    process.argv[2]
-      ? "MySQL payment schema is ready."
-      : "MySQL payment schema and migration are ready.",
-  );
+  console.log("MySQL payment schema is ready.");
 }

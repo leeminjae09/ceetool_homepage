@@ -31,7 +31,7 @@ export function sqlStatements(text) {
   return statements;
 }
 
-export async function createTestDatabase(t, { migrated = true } = {}) {
+export async function createTestDatabase(t) {
   if (!process.env.MYSQL_TEST_PASSWORD)
     throw new Error(
       "Real MySQL tests require MYSQL_TEST_PASSWORD and a disposable MySQL 8 instance",
@@ -57,22 +57,6 @@ export async function createTestDatabase(t, { migrated = true } = {}) {
     await readFile(new URL("../../tables.sql", import.meta.url), "utf8")
   ).replaceAll("`ceetool_payments`", `\`${config.database}\``);
   for (const statement of sqlStatements(schema)) await admin.query(statement);
-  if (migrated)
-    await admin.query(
-      "INSERT INTO settings (setting_key,value) VALUES ('storage_migration','sqlite-v1')",
-    );
-  db = await openDatabase(config, { requireMigration: migrated });
+  db = await openDatabase(config);
   return db;
-}
-
-export async function restoreTestDump(db, text) {
-  if (!/^ceetool_test_[a-f0-9]+$/.test(db.config.database))
-    throw new Error("Only disposable test databases can be restored");
-  const connection = await mysql.createConnection(db.config);
-  try {
-    for (const statement of sqlStatements(text))
-      await connection.query(statement);
-  } finally {
-    await connection.end();
-  }
 }

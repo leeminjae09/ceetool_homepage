@@ -81,8 +81,8 @@ ADMIN_GOOGLE_EMAILS=john@ceetool.com
 
 `DB_PASS`에는 직접 실제 비밀번호를 입력합니다. 커밋되는 설정 예시는 빈 값이며
 로컬 `server/.env`는 Git에서 제외됩니다. 기본 MySQL 포트는 3306이고 필요할 때만 `DB_PORT`를 추가합니다.
-`DB_PASS`가 없거나 DB 연결·스키마·이전 검증이 실패하면 서버는 시작하지 않습니다.
-테이블을 자동 생성하거나 SQLite로 돌아가는 폴백은 없습니다.
+`DB_PASS`가 없거나 DB 연결·스키마 검증이 실패하면 서버는 시작하지 않습니다.
+테이블을 자동 생성하지 않으며 MySQL만 사용합니다.
 
 이메일은 쉼표로 여러 개 지정할 수 있습니다. 목록이 비어 있으면 아무 계정도 허용하지 않습니다.
 `.env`에 `NODE_ENV`를 지정할 필요는 없습니다. 운영 서비스가 내부적으로 `production`을 강제하여
@@ -115,7 +115,6 @@ npm --prefix server start
 Vite가 `/api/payments`를 `127.0.0.1:3888`로 프록시합니다.
 Google OAuth 반환 주소는 운영 사이트로 고정되어 실제 Google 로그인은 운영 주소에서 진행합니다.
 운영 데이터 저장은 `mysql2` 연결 풀과 InnoDB 트랜잭션을 사용합니다.
-SQLite 모듈은 기존 파일의 읽기 전용 이전 도구와 해당 테스트에서만 사용합니다.
 
 ```sh
 npm --prefix server run check
@@ -129,7 +128,7 @@ npm run build
 `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, `MYSQL_TEST_PASSWORD`를 설정합니다.
 테스트 계정은 임시 `ceetool_test_*` DB 생성·삭제 권한이 필요합니다.
 운영 계정/DB를 테스트에 사용하지 마세요. GitHub Actions는 별도의 MySQL 8 서비스 컨테이너를 사용합니다.
-금액 변조·중복/동시 승인·응답 유실·위조 통지·모바일 반환·세션/CSRF·허용 계정·보관/백업을 검사합니다.
+금액 변조·중복/동시 승인·응답 유실·위조 통지·모바일 반환·세션/CSRF·허용 계정·재연결·개인정보 보관을 검사합니다.
 
 ### 결제 결과·통지 처리
 
@@ -156,7 +155,7 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
 [취소](https://paysm.co.kr/developers/cancel.html),
 [영수증 조회](https://paysm.co.kr/developers/receipt.html).
 
-배포 시 백업을 만든 뒤 기존 `확인 중` 거래를 `/receipt.do` GET으로 최대 5건 조회합니다.
+배포 시 기존 `확인 중` 거래를 `/receipt.do` GET으로 최대 5건 조회합니다.
 기존 `0000` 통지 또는 승인 응답 유실 건만 대상으로 하며 승인·취소 요청은 보내지 않습니다.
 조회 성공, 거래번호·금액·주문번호(제공 시) 일치 및 `TRX_ST_CD=0`을 확인해야 복구합니다.
 조회 중 새 통지가 도착하면 해당 결과로 덮어쓰지 않습니다. 기존 결제일은 유지하며 없으면 복구 시각을 기록합니다.
@@ -208,20 +207,25 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
    ```json
    {
      "Version": "2012-10-17",
-     "Statement": [{
-       "Effect": "Allow",
-       "Action": "ses:SendEmail",
-       "Resource": "arn:aws:ses:ap-northeast-2:YOUR_ACCOUNT_ID:identity/ceetool.com",
-       "Condition": {
-         "StringEquals": { "ses:FromAddress": "john@ceetool.com" },
-         "ForAllValues:StringEquals": { "ses:Recipients": ["john@ceetool.com"] }
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": "ses:SendEmail",
+         "Resource": "arn:aws:ses:ap-northeast-2:YOUR_ACCOUNT_ID:identity/ceetool.com",
+         "Condition": {
+           "StringEquals": { "ses:FromAddress": "john@ceetool.com" },
+           "ForAllValues:StringEquals": {
+             "ses:Recipients": ["john@ceetool.com"]
+           }
+         }
        }
-     }]
+     ]
    }
    ```
 
    이메일 주소 자체를 인증했다면 리소스의 `identity/ceetool.com` 대신
    `identity/john@ceetool.com`을 사용합니다. 역할에서 IMDSv2 자격 증명을 읽을 수 있어야 합니다.
+
 3. SES 샌드박스에서는 수신 주소도 검증되어야 합니다. 현재는 검증된 동일 주소 간 발송이므로
    샌드박스에서도 사용할 수 있지만, 향후 고객 메일은 운영 액세스 신청과 수신 동의·반송 처리가 필요합니다.
 4. 배포 후 최초 1회만 연결 확인 메일을 대기열에 등록합니다. 관리자 화면의
@@ -241,12 +245,9 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
   /home/ubuntu/ceetool-payments/current/server/src/email.mjs --status
 ```
 
-### 운영 설정·저장·백업
+### 운영 설정·저장
 
-#### MySQL 최초 전환 순서
-
-이 전환은 `mysql-storage` 브랜치에서 검증하며, 이 브랜치의 CI는 운영에 배포하지 않습니다.
-아래 DB 준비가 끝난 후에만 `main`에 병합하여 배포합니다. 준비 중에는 기존 운영 서비스와 SQLite 파일을 유지합니다.
+#### MySQL 설정
 
 1. MySQL **8.0.16 이상**에서 관리자가 저장소 루트의 [tables.sql](tables.sql)을 직접 실행합니다.
    이 파일은 `ceetool_payments` DB, 8개 테이블, 결제 상태 알림 트리거를 생성합니다.
@@ -258,7 +259,7 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
 
    root 비밀번호 인증 방식이면 대신 `mysql -u root -p < tables.sql`을 사용합니다.
    `ceetool_user`가 이미 생성되어 있는지 확인하고 해당 계정에 다음 권한을 부여합니다.
-   `TRIGGER`는 `mysqldump`에서 트리거까지 백업하기 위해 필요합니다.
+   `TRIGGER`는 결제 상태 알림 트리거의 존재를 점검하기 위해 필요합니다.
 
    ```sql
    GRANT SELECT, INSERT, UPDATE, DELETE, TRIGGER
@@ -266,6 +267,7 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
    ```
 
    테이블 생성 SQL을 다시 실행할 때도 신규 결제를 차단하세요. 테이블은 삭제하지 않지만 트리거를 재생성합니다.
+
 2. **운영 서버** `/home/ubuntu/ceetool-payments/.env`에 아래 항목을 추가하고 비밀번호를 직접 입력합니다.
    기존 결제·Google OAuth 설정은 그대로 보존합니다. 로컬 파일을 운영 `.env` 위에 덮어쓰지 마세요.
 
@@ -277,24 +279,14 @@ PC는 PaySM iframe의 origin과 window 참조를 확인하고, 모바일은 서�
    ```
 
    비밀번호에 `#`, 공백 등이 있다면 Node 환경변수 파일 문법에 맞게 따옴표로 감싸세요.
-   비밀번호를 채팅·Git·명령행 인자로 전달하지 않습니다. 서버에는 MySQL 8의 `mysqldump`도 있어야 합니다.
-3. 준비가 완료된 후 `main`으로 병합해 배포합니다. 배포는 **현재 서비스 정지 전에**
-   MySQL 연결·스키마와 백업 도구 유무를 확인합니다. 미설정 상태에서는 기존 서비스를 건드리지 않고 중단합니다.
-4. 최초 전환에서는 잠시 결제 API를 정지하고 기존 SQLite의 일관성 백업을 생성한 다음,
-   [이전 도구](server/src/migrate-sqlite.mjs)가 8개 테이블 전체를 하나의 MySQL 트랜잭션으로 복사합니다.
-   결제 링크 토큰·거래 내역·기본 조건·세션·메일 대기열을 보존하고 테이블별 건수와 내용 SHA-256을 대조합니다.
-   기존 완료 거래의 메일을 새로 생성하지 않습니다. 소스 SQLite는 읽기 전용이며 파일을 삭제하지 않습니다.
-5. 대상 DB가 비어 있지 않거나 내용이 다르면 덮어쓰지 않고 실패합니다. 복사·검증 실패 시 MySQL 변경은 롤백합니다.
-   같은 소스의 완료된 이전을 반복해도 데이터를 다시 쓰지 않으며, 다른 소스는 거부합니다.
-   서비스 시작은 이전 완료 표식을 확인해야 하므로 빈 MySQL로 잘못 시작할 수 없습니다.
-6. MySQL 백업을 생성한 후 새 서비스를 시작합니다. MySQL 활성화 후 오류가 나면
-   이전 SQLite 서비스로 자동 복귀하지 않고 정지하여 데이터가 두 DB로 나뉘는 것을 방지합니다.
-   이 경우 MySQL 거래를 확인하고 수정한 서비스를 재시작해야 합니다.
+   비밀번호를 채팅·Git·명령행 인자로 전달하지 않습니다.
 
-최초 전환에서 서비스가 정지된 동안은 결제 API가 잠시 응답하지 않을 수 있습니다.
-서버 통지 재전송·승인 확인 상태를 점검하고 신규 결제를 다시 진행하세요.
-SQLite 백업은 역사적 안전 사본으로 남기며 MySQL 전환 후 계속 갱신하지 않습니다.
-MySQL 사용 이후의 데이터에 대해 과거 SQLite로 되돌리는 것은 복원이 아닙니다.
+3. 준비가 완료된 후 `main`에 push해 배포합니다. 배포는 **현재 서비스 정지 전에**
+   MySQL 연결·스키마를 확인합니다. 미설정 상태에서는 기존 서비스를 건드리지 않고 중단합니다.
+   기존 MySQL 데이터는 다시 복사하거나 초기화하지 않습니다.
+
+운영 데이터의 MySQL 전환은 완료되었습니다. SQLite 모듈·이전 도구는 사용하지 않습니다.
+서비스 전환 중에는 결제 API가 잠시 응답하지 않을 수 있습니다.
 
 첫 배포가 비어 있는 `/home/ubuntu/ceetool-payments/.env`를 생성합니다.
 로컬 `.env`는 운영 서버로 자동 전송되지 않습니다. 서버에서만 실제 값을 입력한 뒤:
@@ -313,17 +305,14 @@ curl -fsS http://127.0.0.1:3888/api/payments/health
 - 코드·격리된 Node 런타임: `/home/ubuntu/ceetool-payments/releases/<커밋>/`
 - 현재 코드: `/home/ubuntu/ceetool-payments/current`
 - 영구 DB: MySQL `ceetool_payments` (결제 서비스는 MySQL 데이터 파일을 직접 관리하지 않음)
-- 일일 일관성 백업: `/home/ubuntu/ceetool-payments/data/backups/payments-*.sql`, 최대 7개/7일 보관
-- 자동 백업: `ceetool-payments-backup.timer` (UTC 19시, 한국 시간 다음 날 04시 부근)
 
-DB·설정·백업은 웹 공개 폴더 및 코드 릴리스와 분리하며 다음 배포에 덮어쓰지 않습니다.
+DB·설정은 웹 공개 폴더 및 코드 릴리스와 분리하며 다음 배포에 덮어쓰지 않습니다.
 운영 프로세스의 umask는 0077입니다. 이름·연락처는 미결제 만료 후 30일, 완료 거래는 결제 후 5년 기준으로 정리합니다.
-백업은 같은 서버에 있으므로 서버 자체 장애에 대비한 EBS 스냅샷 등 외부 백업도 별도로 운영하세요.
-복원할 때는 신규 결제를 차단하고 PaySM 거래와 대조해야 하며 과거 미결제 상태를 그대로 재개하면 안 됩니다.
-백업은 `mysqldump --single-transaction`을 사용하며 발송 대기열·트리거도 포함합니다.
-인증 정보는 권한 0600의 임시 옵션 파일로 전달하고 종료 시 제거하며 명령행 인자에 비밀번호를 넣지 않습니다.
-실패한 덤프는 정상 `.sql`로 남기지 않습니다. 복원은 서비스 정지 및 별도 안전 백업 후 관리자가 실행합니다.
-덤프에는 트리거와 DEFINER 정보가 있으므로 관리자 권한이 필요할 수 있습니다.
+**DB 자동 백업은 사용하지 않습니다.** Git은 코드만 보관하므로 운영 MySQL 데이터의 복구 수단은 아닙니다.
+배포 시 과거 백업 timer/service를 중지·제거하고, 서비스 상태 확인 후 기존 `data/payments.sqlite`와
+그 보조 파일, `data/backups`의 정해진 이름에 맞는 과거 백업·임시 파일만 삭제합니다.
+심볼릭 링크로 된 저장 경로는 거부하며, 그 외 파일은 삭제하지 않습니다. 운영 MySQL 데이터에는 접근해 삭제하지 않습니다.
+메일 발송 대기열과 개인정보 보관기간 정리는 백업이 아닌 운영 기능으로 그대로 유지합니다.
 
 ## 콘텐츠 수정
 
@@ -412,7 +401,7 @@ Open Graph와 Twitter 카드 메타데이터를 정의합니다.
 2. 프런트 설치·린트, 결제 서버 설치·구문 검사·과금 없는 테스트, 프런트 빌드
 3. 커밋 해시를 `dist/deployment.txt`에 기록
 4. SCP로 `dist`와 결제 서버·의존성·검증한 Linux x64 Node 22 런타임 묶음을 전송
-5. 정적 파일 접근 권한 설정, 결제 서비스 릴리스 전환·재시작, 일일 백업 설정
+5. 정적 파일 접근 권한 설정, MySQL 사전 점검, 결제 서비스 릴리스 전환·재시작
 6. 대상 도메인과 정적 root가 일치하는 기존 Nginx 가상호스트에만 결제 경로 include 추가
 7. 운영 HTTPS 커밋·HTML·결제 API 상태와 관리자 화면 응답 확인
 

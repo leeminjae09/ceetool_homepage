@@ -18,7 +18,6 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/ubuntu/ceetool-payments/data
 
 [Install]
 WantedBy=multi-user.target

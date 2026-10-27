@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/index.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/index.mjs && node --check src/app.mjs && node --check src/paysm.mjs && node --check src/database.mjs && node --check src/config.mjs && node --check src/backup.mjs && node --check src/reconcile.mjs && node --check src/email.mjs && node --check src/migrate-sqlite.mjs && node --check deploy/install-nginx.mjs"
+    "check": "node --check src/index.mjs && node --check src/app.mjs && node --check src/paysm.mjs && node --check src/database.mjs && node --check src/config.mjs && node --check src/reconcile.mjs && node --check src/email.mjs && node --check deploy/install-nginx.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1157.0",

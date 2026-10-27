@@ -1,9 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createPaymentApp } from "../src/app.mjs";
 import { loadConfig, PUBLIC_SITE_URL } from "../src/config.mjs";
 import {
@@ -12,11 +9,10 @@ import {
   purgePersonalData,
   recoverInterruptedApprovals,
 } from "../src/database.mjs";
-import { backupDatabase } from "../src/backup.mjs";
 import { createPaysm, ediDate, makeHash } from "../src/paysm.mjs";
 import { reconcileReviews } from "../src/reconcile.mjs";
 import { createEmailWorker, emailStatus } from "../src/email.mjs";
-import { createTestDatabase, restoreTestDump } from "./mysql-helper.mjs";
+import { createTestDatabase } from "./mysql-helper.mjs";
 
 const environment = {
   PAYSM_MID: "TESTMID001",
@@ -1503,10 +1499,9 @@ test("receipt reconciliation limits each batch to five and never touches unpaid 
   );
 });
 
-test("MySQL survives reconnect, restores a consistent dump, and retains personal data correctly", async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), "ceetool-payments-test-"));
+test("MySQL survives reconnect and retains personal data correctly", async (t) => {
+  let db = await createTestDatabase(t);
   try {
-    let db = await createTestDatabase(t);
     const config = db.config;
     const now = Date.now();
     await db.run(
@@ -1527,14 +1522,6 @@ test("MySQL survives reconnect, restores a consistent dump, and retains personal
     await db.close();
     db = await openDatabase(config);
     assert.equal((await db.get("SELECT amount FROM invoices")).amount, 100);
-    const backup = await backupDatabase(config, join(directory, "backups"));
-    const snapshot = await createTestDatabase(t);
-    await restoreTestDump(snapshot, readFileSync(backup, "utf8"));
-    assert.equal(
-      (await snapshot.get("SELECT amount FROM invoices")).amount,
-      100,
-    );
-    await snapshot.close();
     await purgePersonalData(db, now);
     assert.equal(
       (await db.get("SELECT buyer_name FROM invoices")).buyer_name,
@@ -1547,10 +1534,9 @@ test("MySQL survives reconnect, restores a consistent dump, and retains personal
     await db.run("UPDATE invoices SET state = 'processing'");
     await recoverInterruptedApprovals(db);
     assert.equal((await db.get("SELECT state FROM invoices")).state, "review");
-    await db.close();
     assert.equal(digest("session").length, 64);
   } finally {
-    rmSync(directory, { recursive: true, force: true });
+    await db.close();
   }
 });
 
