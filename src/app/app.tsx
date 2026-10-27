@@ -127,7 +127,6 @@ function Home() {
           </details>
         </section>
         <BusinessInfo
-          showAdminLink
           className="space-y-1 border-t border-gray-800 py-8 text-center text-xs leading-relaxed text-gray-400"
         />
         {selectedProject && selectedDetails && (
