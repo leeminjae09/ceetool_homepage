@@ -1,51 +1,96 @@
-import { DatabaseSync } from "node:sqlite";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { createWriteStream } from "node:fs";
 import {
-  chmodSync,
-  mkdirSync,
-  readdirSync,
-  statSync,
-  unlinkSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  stat,
+  unlink,
+  writeFile,
+  rm,
+  rmdir,
+  rename,
+} from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
+import { pipeline } from "node:stream/promises";
 import { loadConfig } from "./config.mjs";
+import { openDatabase } from "./database.mjs";
 
-export function backupDatabase(source, destination) {
-  mkdirSync(destination, { recursive: true, mode: 0o700 });
+const option = (value) =>
+  `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n").replaceAll("\r", "\\r")}"`;
+export async function backupDatabase(config, destination) {
+  const db = await openDatabase(config);
+  await db.close();
+  await mkdir(destination, { recursive: true, mode: 0o700 });
+  const temporary = await mkdtemp(join(destination, ".mysql-backup-"));
   const file = join(
     destination,
-    `payments-${Date.now()}-${randomBytes(4).toString("hex")}.sqlite`,
+    `payments-${Date.now()}-${randomBytes(4).toString("hex")}.sql`,
   );
-  const db = new DatabaseSync(source, { readOnly: true });
+  const partial = `${file}.partial`;
   try {
-    db.exec("PRAGMA busy_timeout = 5000");
-    db.prepare("VACUUM INTO ?").run(file);
+    const credentials = join(temporary, "client.cnf");
+    await writeFile(
+      credentials,
+      `[client]\nhost=${option(config.host)}\nport=${config.port}\nuser=${option(config.user)}\npassword=${option(config.password)}\n`,
+      { mode: 0o600 },
+    );
+    const child = spawn(
+      "mysqldump",
+      [
+        `--defaults-extra-file=${credentials}`,
+        "--protocol=TCP",
+        "--single-transaction",
+        "--quick",
+        "--no-tablespaces",
+        "--set-gtid-purged=OFF",
+        "--hex-blob",
+        config.database,
+      ],
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const exited = once(child, "close");
+    const written = pipeline(
+      child.stdout,
+      createWriteStream(partial, { mode: 0o600 }),
+    );
+    const [[code]] = await Promise.all([exited, written]);
+    if (code !== 0) throw new Error(`mysqldump failed with exit code ${code}`);
+    await rename(partial, file);
+    await chmod(file, 0o600);
+    const files = (await readdir(destination))
+      .filter((name) => /^payments-\d+-[a-f0-9]{8}\.sql$/.test(name))
+      .sort()
+      .reverse();
+    for (const [index, name] of files.entries()) {
+      const path = join(destination, name);
+      if (index >= 7 || (await stat(path)).mtimeMs < Date.now() - 7 * 86400000)
+        await unlink(path);
+    }
+    return file;
+  } catch (error) {
+    await rm(partial, { force: true });
+    throw error;
   } finally {
-    db.close();
+    await rm(join(temporary, "client.cnf"), { force: true });
+    await rmdir(temporary);
   }
-  chmodSync(file, 0o600);
-  const files = readdirSync(destination, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isFile() && /^payments-\d+-[a-f0-9]{8}\.sqlite$/.test(entry.name),
-    )
-    .map((entry) => join(destination, entry.name))
-    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-  for (const [index, old] of files.entries()) {
-    if (index >= 7 || statSync(old).mtimeMs < Date.now() - 7 * 86400000)
-      unlinkSync(old);
-  }
-  return file;
 }
+
 if (
   process.argv[1] &&
-  fileURLToPath(import.meta.url) === resolve(process.argv[1])
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  const config = loadConfig();
-  const path = backupDatabase(
-    config.dbPath,
-    join(dirname(config.dbPath), "backups"),
+  const path = await backupDatabase(
+    loadConfig().database,
+    resolve(
+      process.env.PAYMENT_BACKUP_DIR ||
+        "/home/ubuntu/ceetool-payments/data/backups",
+    ),
   );
-  console.log(`Payment database snapshot created: ${path}`);
+  console.log(`MySQL payment database snapshot created: ${path}`);
 }

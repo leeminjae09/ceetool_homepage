@@ -1,6 +1,6 @@
 [Unit]
 Description=CEETOOL payment API
-After=network-online.target
+After=network-online.target mysql.service
 Wants=network-online.target
 
 [Service]
@@ -9,7 +9,7 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/ceetool-payments/current/server
 EnvironmentFile=/home/ubuntu/ceetool-payments/.env
-ExecStart=/usr/bin/env NODE_ENV=production PORT=3888 PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite /home/ubuntu/ceetool-payments/current/runtime/node /home/ubuntu/ceetool-payments/current/server/src/index.mjs
+ExecStart=/usr/bin/env NODE_ENV=production PORT=3888 /home/ubuntu/ceetool-payments/current/runtime/node /home/ubuntu/ceetool-payments/current/server/src/index.mjs
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=30

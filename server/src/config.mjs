@@ -1,5 +1,3 @@
-import { resolve } from "node:path";
-
 export const PAYSM_BASE_URL = "https://api.skyclassism.com";
 export const PUBLIC_SITE_URL = "https://ceetool.com";
 export const API_PATH = "/api/payments";
@@ -13,7 +11,13 @@ export function loadConfig(env = process.env) {
   const config = {
     production: env.NODE_ENV === "production",
     port,
-    dbPath: resolve(env.PAYMENT_DB_PATH || "data/payments.sqlite"),
+    database: {
+      host: env.DB_HOST || "localhost",
+      port: Number(env.DB_PORT || 3306),
+      user: env.DB_USER || "ceetool_user",
+      password: env.DB_PASS || "",
+      database: env.DB_NAME || "ceetool_payments",
+    },
     mid: env.PAYSM_MID || "",
     merchantKey: env.PAYSM_MERCHANT_KEY || "",
     googleClientId: env.GOOGLE_CLIENT_ID || "",
@@ -23,6 +27,16 @@ export function loadConfig(env = process.env) {
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
   };
+  if (
+    !Number.isInteger(config.database.port) ||
+    config.database.port < 1 ||
+    config.database.port > 65535
+  )
+    throw new Error("DB_PORT must be an integer between 1 and 65535");
+  if (!/^[A-Za-z0-9_]{1,64}$/.test(config.database.database))
+    throw new Error(
+      "DB_NAME must contain only letters, digits and underscores",
+    );
   if (config.mid && !/^[A-Za-z0-9_-]{10}$/.test(config.mid)) {
     throw new Error("PAYSM_MID must be the issued 10-character MID");
   }

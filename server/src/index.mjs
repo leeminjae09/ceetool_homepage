@@ -1,6 +1,10 @@
 import { createPaymentApp } from "./app.mjs";
 import { loadConfig, googleReady, paymentReady } from "./config.mjs";
-import { createEmailWorker, createMailer, queueConnectionTest } from "./email.mjs";
+import {
+  createEmailWorker,
+  createMailer,
+  queueConnectionTest,
+} from "./email.mjs";
 import {
   openDatabase,
   purgePersonalData,
@@ -8,17 +12,33 @@ import {
 } from "./database.mjs";
 
 const config = loadConfig();
-const db = openDatabase(config.dbPath);
-purgePersonalData(db);
-const retentionTimer = setInterval(() => purgePersonalData(db), 3600000);
+const db = await openDatabase(config.database);
+await purgePersonalData(db);
+const retentionTimer = setInterval(() => {
+  purgePersonalData(db).catch((error) =>
+    console.error(
+      JSON.stringify({
+        event: "payment_retention_error",
+        reason: error.code || error.name,
+      }),
+    ),
+  );
+}, 3600000);
 retentionTimer.unref();
-recoverInterruptedApprovals(db);
-queueConnectionTest(db);
+await recoverInterruptedApprovals(db);
+await queueConnectionTest(db);
 const emailWorker = createEmailWorker(db, createMailer());
 const flushEmails = () => {
-  emailWorker.run().catch((error) =>
-    console.error(JSON.stringify({ event: "payment_email_worker_error", reason: error.name })),
-  );
+  emailWorker
+    .run()
+    .catch((error) =>
+      console.error(
+        JSON.stringify({
+          event: "payment_email_worker_error",
+          reason: error.name,
+        }),
+      ),
+    );
 };
 const emailTimer = setInterval(flushEmails, 5000);
 emailTimer.unref();
@@ -44,7 +64,7 @@ function shutdown() {
   const emailStopped = emailWorker.stop();
   server.close(async () => {
     await emailStopped;
-    db.close();
+    await db.close();
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 25000).unref();

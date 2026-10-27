@@ -6,7 +6,8 @@ After=ceetool-payments.service
 Type=oneshot
 User=ubuntu
 Group=ubuntu
-ExecStart=/usr/bin/env PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite /home/ubuntu/ceetool-payments/current/runtime/node /home/ubuntu/ceetool-payments/current/server/src/backup.mjs
+EnvironmentFile=/home/ubuntu/ceetool-payments/.env
+ExecStart=/home/ubuntu/ceetool-payments/current/runtime/node /home/ubuntu/ceetool-payments/current/server/src/backup.mjs
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

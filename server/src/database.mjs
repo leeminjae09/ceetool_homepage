@@ -1,99 +1,82 @@
-import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, chmodSync } from "node:fs";
-import { dirname } from "node:path";
+import mysql from "mysql2/promise";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes } from "node:crypto";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { loadConfig } from "./config.mjs";
 
 export const token = () => randomBytes(32).toString("base64url");
 export const digest = (value) =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-export function openDatabase(path) {
-  if (path !== ":memory:")
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const db = new DatabaseSync(path);
-  if (path !== ":memory:") chmodSync(path, 0o600);
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-    PRAGMA busy_timeout = 5000;
-    CREATE TABLE IF NOT EXISTS invoices (
-      token TEXT PRIMARY KEY, order_no TEXT NOT NULL UNIQUE,
-      title TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount > 0),
-      tax_type TEXT NOT NULL CHECK(tax_type IN ('taxable', 'exempt')),
-      terms TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL,
-      state TEXT NOT NULL DEFAULT 'pending'
-        CHECK(state IN ('pending','processing','paid','review')),
-      tid TEXT UNIQUE, paid_at INTEGER, buyer_name TEXT, buyer_phone TEXT,
-      consent_at INTEGER, note TEXT NOT NULL DEFAULT '',
-      noti_code TEXT, noti_date TEXT
+export async function openDatabase(config, { requireMigration = true } = {}) {
+  if (!config.password) throw new Error("DB_PASS is required");
+  const pool = mysql.createPool({
+    ...config,
+    charset: "utf8mb4",
+    timezone: "Z",
+    connectionLimit: 5,
+    connectTimeout: 10000,
+    supportBigNumbers: true,
+    bigNumberStrings: false,
+    flags: ["-FOUND_ROWS"],
+  });
+  const context = new AsyncLocalStorage();
+  let closing;
+  const query = async (sql, params) => {
+    const [result] = await (context.getStore() || pool).execute(sql, params);
+    return result;
+  };
+  const db = {
+    config,
+    async run(sql, ...params) {
+      const result = await query(sql, params);
+      return { changes: result.affectedRows, insertId: result.insertId };
+    },
+    async all(sql, ...params) {
+      return query(sql, params);
+    },
+    async get(sql, ...params) {
+      return (await query(sql, params))[0];
+    },
+    async transaction(fn) {
+      if (context.getStore())
+        throw new Error("Nested database transactions are not supported");
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        const result = await context.run(connection, fn);
+        await connection.commit();
+        return result;
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
+    },
+    close() {
+      return (closing ||= pool.end());
+    },
+  };
+  try {
+    const schema = await db.get(
+      "SELECT value FROM settings WHERE setting_key = 'schema_version'",
     );
-    CREATE TABLE IF NOT EXISTS attempts (
-      token TEXT PRIMARY KEY, invoice_token TEXT NOT NULL REFERENCES invoices(token),
-      mid TEXT NOT NULL, edi_date TEXT NOT NULL, created_at INTEGER NOT NULL,
-      state TEXT NOT NULL DEFAULT 'prepared'
-        CHECK(state IN ('prepared','processing','closed','paid','review'))
+    if (schema?.value !== "mysql-v1")
+      throw new Error("Apply tables.sql before starting the payment server");
+    const migration = await db.get(
+      "SELECT value FROM settings WHERE setting_key = 'storage_migration'",
     );
-    CREATE INDEX IF NOT EXISTS attempts_invoice ON attempts(invoice_token);
-    CREATE INDEX IF NOT EXISTS invoices_created ON invoices(created_at DESC, token DESC);
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY, value TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      hash TEXT PRIMARY KEY, email TEXT NOT NULL, csrf TEXT NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS oauth_states (
-      hash TEXT PRIMARY KEY, verifier TEXT NOT NULL, nonce TEXT NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS notifications (
-      fingerprint TEXT PRIMARY KEY,
-      invoice_token TEXT NOT NULL REFERENCES invoices(token),
-      result_code TEXT NOT NULL, amount TEXT NOT NULL, received_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS email_outbox (
-      id INTEGER PRIMARY KEY,
-      event_key TEXT NOT NULL UNIQUE,
-      kind TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(status IN ('pending','sending','sent','failed')),
-      attempts INTEGER NOT NULL DEFAULT 0,
-      next_at INTEGER NOT NULL,
-      lease_until INTEGER,
-      message_id TEXT,
-      sent_at INTEGER,
-      last_error TEXT
-    );
-    CREATE INDEX IF NOT EXISTS email_outbox_pending ON email_outbox(status, next_at);
-    CREATE TABLE IF NOT EXISTS payment_visits (
-      invoice_token TEXT NOT NULL REFERENCES invoices(token),
-      visitor_hash TEXT NOT NULL,
-      notified_at INTEGER NOT NULL,
-      PRIMARY KEY (invoice_token, visitor_hash)
-    );
-    CREATE TRIGGER IF NOT EXISTS payment_status_email
-    AFTER UPDATE OF state, noti_code ON invoices
-    WHEN NEW.state IN ('paid','review') AND
-      (OLD.state != NEW.state OR
-        (NEW.state = 'review' AND OLD.noti_code IS NOT NEW.noti_code))
-    BEGIN
-      INSERT OR IGNORE INTO email_outbox
-        (event_key, kind, payload, created_at, next_at)
-      VALUES (
-        (CASE WHEN NEW.state = 'paid' THEN 'paid'
-          WHEN NEW.noti_code = '2001' THEN 'cancelled' ELSE 'review' END)
-          || ':' || NEW.token || ':' || COALESCE(NEW.tid, ''),
-        CASE WHEN NEW.state = 'paid' THEN 'paid'
-          WHEN NEW.noti_code = '2001' THEN 'cancelled' ELSE 'review' END,
-        json_object('orderNo', NEW.order_no, 'title', NEW.title, 'amount', NEW.amount),
-        CAST(unixepoch('subsec') * 1000 AS INTEGER),
-        CAST(unixepoch('subsec') * 1000 AS INTEGER)
+    if (requireMigration && migration?.value !== "sqlite-v1")
+      throw new Error(
+        "Run migrate-sqlite.mjs before starting the payment server",
       );
-    END;
-  `);
-  return db;
+    return db;
+  } catch (error) {
+    await db.close();
+    throw error;
+  }
 }
 
 export function invoiceView(row, admin = false) {
@@ -130,23 +113,52 @@ export function invoiceView(row, admin = false) {
   };
 }
 
-export function purgePersonalData(db, now = Date.now()) {
+export async function purgePersonalData(db, now = Date.now()) {
   const fiveYearsAgo = new Date(now);
   fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-  db.prepare(
+  await db.run(
     `UPDATE invoices SET buyer_name = NULL, buyer_phone = NULL
     WHERE (buyer_name IS NOT NULL OR buyer_phone IS NOT NULL) AND
     ((state = 'pending' AND expires_at < ?) OR COALESCE(paid_at, created_at) < ?)`,
-  ).run(now - 30 * 86400000, fiveYearsAgo.getTime());
-  db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now);
-  db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").run(now);
-  db.prepare("DELETE FROM payment_visits WHERE notified_at < ?").run(now - 30 * 86400000);
-  db.prepare("UPDATE email_outbox SET payload = '{}' WHERE status = 'sent' AND sent_at < ? AND payload != '{}'").run(now - 30 * 86400000);
+    now - 30 * 86400000,
+    fiveYearsAgo.getTime(),
+  );
+  await db.run("DELETE FROM sessions WHERE expires_at <= ?", now);
+  await db.run("DELETE FROM oauth_states WHERE expires_at <= ?", now);
+  await db.run(
+    "DELETE FROM payment_visits WHERE notified_at < ?",
+    now - 30 * 86400000,
+  );
+  await db.run(
+    "UPDATE email_outbox SET payload = '{}' WHERE status = 'sent' AND sent_at < ? AND payload != '{}'",
+    now - 30 * 86400000,
+  );
 }
 
-export function recoverInterruptedApprovals(db) {
-  db.exec(`UPDATE invoices SET state = 'review',
-    note = '승인 처리 중 서버가 재시작되었습니다. PaySM 관리자에서 거래를 확인해야 합니다.'
-    WHERE state = 'processing';
-    UPDATE attempts SET state = 'review' WHERE state = 'processing';`);
+export async function recoverInterruptedApprovals(db) {
+  await db.transaction(async () => {
+    await db.run(`UPDATE invoices SET state = 'review',
+      note = '승인 처리 중 서버가 재시작되었습니다. PaySM 관리자에서 거래를 확인해야 합니다.'
+      WHERE state = 'processing'`);
+    await db.run(
+      "UPDATE attempts SET state = 'review' WHERE state = 'processing'",
+    );
+  });
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
+  if (process.argv[2] && process.argv[2] !== "--schema-only")
+    throw new Error("Use --schema-only to check the schema before migration");
+  const db = await openDatabase(loadConfig().database, {
+    requireMigration: process.argv[2] !== "--schema-only",
+  });
+  await db.close();
+  console.log(
+    process.argv[2]
+      ? "MySQL payment schema is ready."
+      : "MySQL payment schema and migration are ready.",
+  );
 }

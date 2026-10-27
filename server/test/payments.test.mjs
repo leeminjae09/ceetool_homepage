@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPaymentApp } from "../src/app.mjs";
@@ -16,6 +16,7 @@ import { backupDatabase } from "../src/backup.mjs";
 import { createPaysm, ediDate, makeHash } from "../src/paysm.mjs";
 import { reconcileReviews } from "../src/reconcile.mjs";
 import { createEmailWorker, emailStatus } from "../src/email.mjs";
+import { createTestDatabase, restoreTestDump } from "./mysql-helper.mjs";
 
 const environment = {
   PAYSM_MID: "TESTMID001",
@@ -26,7 +27,7 @@ const environment = {
 };
 async function fixture(t, options = {}) {
   const config = loadConfig({ ...environment, ...options.env });
-  const db = openDatabase(":memory:");
+  const db = await createTestDatabase(t);
   const logs = [];
   let googleRequest,
     calls = 0;
@@ -68,7 +69,7 @@ async function fixture(t, options = {}) {
   const base = `http://127.0.0.1:${server.address().port}/api/payments`;
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
-    db.close();
+    await db.close();
     assert.ok(
       !logs.some(
         (line) =>
@@ -202,10 +203,17 @@ test("visit emails use a hashed browser cookie and an atomic exact 30-minute per
   const f = await fixture(t);
   const invoice = await f.invoice();
   await f.api(`/invoices/${invoice.token}`);
-  assert.equal(emailStatus(f.db).pending, 0);
+  assert.equal((await emailStatus(f.db)).pending, 0);
   const path = `/invoices/${invoice.token}/visit`;
-  assert.equal((await f.api(path, { method: "POST", origin: "https://evil.invalid" })).status, 403);
-  assert.equal((await f.api("/invoices/invalid/visit", { method: "POST" })).status, 404);
+  assert.equal(
+    (await f.api(path, { method: "POST", origin: "https://evil.invalid" }))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await f.api("/invoices/invalid/visit", { method: "POST" })).status,
+    404,
+  );
   const visit = await f.api(path, { method: "POST" });
   assert.equal(visit.status, 204);
   const setCookie = visit.response.headers.getSetCookie()[0];
@@ -214,24 +222,35 @@ test("visit emails use a hashed browser cookie and an atomic exact 30-minute per
   assert.match(setCookie, /Max-Age=2592000/);
   const cookie = setCookie.split(";")[0];
   const visitor = cookie.slice(cookie.indexOf("=") + 1);
-  assert.equal(f.db.prepare("SELECT visitor_hash FROM payment_visits").get().visitor_hash, digest(visitor));
-  await Promise.all(Array.from({ length: 5 }, () => f.api(path, { method: "POST", cookie })));
-  assert.equal(emailStatus(f.db).pending, 1);
+  assert.equal(
+    (await f.db.get("SELECT visitor_hash FROM payment_visits")).visitor_hash,
+    digest(visitor),
+  );
+  await Promise.all(
+    Array.from({ length: 5 }, () => f.api(path, { method: "POST", cookie })),
+  );
+  assert.equal((await emailStatus(f.db)).pending, 1);
   now += 1799999;
   await f.api(path, { method: "POST", cookie });
-  assert.equal(emailStatus(f.db).pending, 1);
+  assert.equal((await emailStatus(f.db)).pending, 1);
   now++;
   await f.api(path, { method: "POST", cookie });
-  assert.equal(emailStatus(f.db).pending, 2);
+  assert.equal((await emailStatus(f.db)).pending, 2);
   await f.api(path, { method: "POST" });
-  assert.equal(emailStatus(f.db).pending, 3);
+  assert.equal((await emailStatus(f.db)).pending, 3);
   const other = await f.invoice();
-  await Promise.all(Array.from({ length: 5 }, () =>
-    f.api(`/invoices/${other.token}/visit`, { method: "POST", cookie })));
-  assert.equal(emailStatus(f.db).pending, 4);
+  await Promise.all(
+    Array.from({ length: 5 }, () =>
+      f.api(`/invoices/${other.token}/visit`, { method: "POST", cookie }),
+    ),
+  );
+  assert.equal((await emailStatus(f.db)).pending, 4);
   assert.equal(f.calls(), 0);
-  purgePersonalData(f.db, Date.now() + 31 * 86400000);
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM payment_visits").get().n, 0);
+  await purgePersonalData(f.db, Date.now() + 31 * 86400000);
+  assert.equal(
+    (await f.db.get("SELECT COUNT(*) AS n FROM payment_visits")).n,
+    0,
+  );
 });
 
 test("desktop and mobile incomplete authentication alerts are attempt-scoped and never mark invoices paid", async (t) => {
@@ -239,69 +258,175 @@ test("desktop and mobile incomplete authentication alerts are attempt-scoped and
   const invoice = await f.invoice();
   const checkout = await f.prepare(invoice);
   const path = `/attempts/${checkout.attemptToken}/failure`;
-  assert.equal((await f.api(path, { method: "POST", origin: "https://evil.invalid", body: { result: "FAIL" } })).status, 403);
-  assert.equal((await f.api(path, { method: "POST", body: { result: "PAID" } })).status, 400);
-  assert.equal((await f.api("/attempts/invalid/failure", { method: "POST", body: { result: "FAIL" } })).status, 404);
-  assert.equal(emailStatus(f.db).pending, 0);
-  assert.equal((await f.api(path, { method: "POST", body: { result: "CANCEL" } })).status, 204);
+  assert.equal(
+    (
+      await f.api(path, {
+        method: "POST",
+        origin: "https://evil.invalid",
+        body: { result: "FAIL" },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await f.api(path, { method: "POST", body: { result: "PAID" } })).status,
+    400,
+  );
+  assert.equal(
+    (
+      await f.api("/attempts/invalid/failure", {
+        method: "POST",
+        body: { result: "FAIL" },
+      })
+    ).status,
+    404,
+  );
+  assert.equal((await emailStatus(f.db)).pending, 0);
+  assert.equal(
+    (await f.api(path, { method: "POST", body: { result: "CANCEL" } })).status,
+    204,
+  );
   await f.api(path, { method: "POST", body: { result: "FAIL" } });
-  assert.equal(emailStatus(f.db).pending, 1);
-  assert.equal((await f.api(`/invoices/${invoice.token}`)).data.state, "pending");
+  assert.equal((await emailStatus(f.db)).pending, 1);
+  assert.equal(
+    (await f.api(`/invoices/${invoice.token}`)).data.state,
+    "pending",
+  );
   const next = await f.prepare(invoice);
   const returned = await f.api(`/return/${next.attemptToken}`, {
-    method: "POST", origin: null, form: { resultCode: "9999" },
+    method: "POST",
+    origin: null,
+    form: { resultCode: "9999" },
   });
   assert.equal(returned.status, 303);
-  await f.api(`/return/${next.attemptToken}`, { method: "POST", origin: null, form: { resultCode: "9999" } });
-  assert.equal(emailStatus(f.db).pending, 2);
-  assert.deepEqual(f.db.prepare("SELECT DISTINCT kind FROM email_outbox").all().map((row) => row.kind), ["failed"]);
+  await f.api(`/return/${next.attemptToken}`, {
+    method: "POST",
+    origin: null,
+    form: { resultCode: "9999" },
+  });
+  assert.equal((await emailStatus(f.db)).pending, 2);
+  assert.deepEqual(
+    (await f.db.all("SELECT DISTINCT kind FROM email_outbox")).map(
+      (row) => row.kind,
+    ),
+    ["failed"],
+  );
   const expired = await f.prepare(invoice);
-  f.db.prepare("UPDATE attempts SET created_at = ? WHERE token = ?")
-    .run(Date.now() - 16 * 60000, expired.attemptToken);
-  await f.api(`/attempts/${expired.attemptToken}/failure`, { method: "POST", body: { result: "FAIL" } });
-  assert.equal(emailStatus(f.db).pending, 2);
+  await f.db.run(
+    "UPDATE attempts SET created_at = ? WHERE token = ?",
+    Date.now() - 16 * 60000,
+    expired.attemptToken,
+  );
+  await f.api(`/attempts/${expired.attemptToken}/failure`, {
+    method: "POST",
+    body: { result: "FAIL" },
+  });
+  assert.equal((await emailStatus(f.db)).pending, 2);
   assert.equal(f.calls(), 0);
 });
 
 test("confirmed approval and duplicate notifications produce one completion alert and separate cancellation", async (t) => {
   const f = await fixture(t);
-  const invoice = await f.invoice(), checkout = await f.prepare(invoice), auth = f.auth(checkout);
-  await f.api(`/approve/${checkout.attemptToken}`, { method: "POST", body: auth });
-  await f.api(`/approve/${checkout.attemptToken}`, { method: "POST", body: auth });
-  const notify = (overrides) => f.api(`/notify/${checkout.attemptToken}`, {
-    method: "POST", origin: null, form: f.notify(checkout, auth, overrides),
+  const invoice = await f.invoice(),
+    checkout = await f.prepare(invoice),
+    auth = f.auth(checkout);
+  await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: auth,
   });
+  await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: auth,
+  });
+  const notify = (overrides) =>
+    f.api(`/notify/${checkout.attemptToken}`, {
+      method: "POST",
+      origin: null,
+      form: f.notify(checkout, auth, overrides),
+    });
   await notify({ resultCd: "0000", cancelYN: "N" });
   await notify({ resultCd: "3001" });
-  await f.api(`/attempts/${checkout.attemptToken}/failure`, { method: "POST", body: { result: "FAIL" } });
-  assert.deepEqual(f.db.prepare("SELECT kind FROM email_outbox").all().map((row) => row.kind), ["paid"]);
+  await f.api(`/attempts/${checkout.attemptToken}/failure`, {
+    method: "POST",
+    body: { result: "FAIL" },
+  });
+  assert.deepEqual(
+    (await f.db.all("SELECT kind FROM email_outbox")).map((row) => row.kind),
+    ["paid"],
+  );
   await notify({ resultCd: "0000", cancelYN: "Y" });
   await notify({ resultCd: "2001" });
-  assert.deepEqual(f.db.prepare("SELECT kind FROM email_outbox ORDER BY id").all().map((row) => row.kind), ["paid", "cancelled"]);
+  assert.deepEqual(
+    (await f.db.all("SELECT kind FROM email_outbox ORDER BY id")).map(
+      (row) => row.kind,
+    ),
+    ["paid", "cancelled"],
+  );
   assert.equal(f.calls(), 1);
 });
 
 test("uncertain approval, startup recovery and receipt recovery durably enqueue correct alerts despite SES failure", async (t) => {
-  const f = await fixture(t, { approve: async () => { throw new Error("timeout"); } });
-  const invoice = await f.invoice(), checkout = await f.prepare(invoice), auth = f.auth(checkout);
-  const result = await f.api(`/approve/${checkout.attemptToken}`, { method: "POST", body: auth });
+  const f = await fixture(t, {
+    approve: async () => {
+      throw new Error("timeout");
+    },
+  });
+  const invoice = await f.invoice(),
+    checkout = await f.prepare(invoice),
+    auth = f.auth(checkout);
+  const result = await f.api(`/approve/${checkout.attemptToken}`, {
+    method: "POST",
+    body: auth,
+  });
   assert.equal(result.status, 200);
   assert.equal(result.data.state, "review");
-  assert.equal(f.db.prepare("SELECT kind FROM email_outbox").get().kind, "review");
-  const worker = createEmailWorker(f.db, { async send() { throw new Error("SES unavailable"); } },
-    { log() {}, error() {} });
+  assert.equal(
+    (await f.db.get("SELECT kind FROM email_outbox")).kind,
+    "review",
+  );
+  const worker = createEmailWorker(
+    f.db,
+    {
+      async send() {
+        throw new Error("SES unavailable");
+      },
+    },
+    { log() {}, error() {} },
+  );
   await worker.run();
-  assert.equal(emailStatus(f.db).pending, 1);
-  const report = await reconcileReviews(f.db, { async receipt() {
-    return { resultCd: "0000", TID: auth.tid, GOODS_AMT: "1100", TRX_ST_CD: "0" };
-  } });
+  assert.equal((await emailStatus(f.db)).pending, 1);
+  const report = await reconcileReviews(f.db, {
+    async receipt() {
+      return {
+        resultCd: "0000",
+        TID: auth.tid,
+        GOODS_AMT: "1100",
+        TRX_ST_CD: "0",
+      };
+    },
+  });
   assert.equal(report.recovered, 1);
-  assert.deepEqual(f.db.prepare("SELECT kind FROM email_outbox ORDER BY id").all().map((row) => row.kind), ["review", "paid"]);
+  assert.deepEqual(
+    (await f.db.all("SELECT kind FROM email_outbox ORDER BY id")).map(
+      (row) => row.kind,
+    ),
+    ["review", "paid"],
+  );
   const second = await f.invoice();
-  f.db.prepare("UPDATE invoices SET state = 'processing' WHERE token = ?").run(second.token);
-  recoverInterruptedApprovals(f.db);
-  recoverInterruptedApprovals(f.db);
-  assert.equal(f.db.prepare("SELECT COUNT(*) AS n FROM email_outbox WHERE kind = 'review'").get().n, 2);
+  await f.db.run(
+    "UPDATE invoices SET state = 'processing' WHERE token = ?",
+    second.token,
+  );
+  await recoverInterruptedApprovals(f.db);
+  await recoverInterruptedApprovals(f.db);
+  assert.equal(
+    (
+      await f.db.get(
+        "SELECT COUNT(*) AS n FROM email_outbox WHERE kind = 'review'",
+      )
+    ).n,
+    2,
+  );
   assert.equal(f.calls(), 1);
   await worker.stop();
 });
@@ -310,24 +435,55 @@ test("mail status/test/retry require admin, CSRF and same origin; retries do not
   const f = await fixture(t);
   assert.equal((await f.api("/admin/emails")).status, 401);
   const admin = await f.login();
-  assert.equal((await f.api("/admin/emails/test", { method: "POST", cookie: admin.cookie })).status, 403);
-  assert.equal((await f.api("/admin/emails/test", { method: "POST", ...admin, origin: "https://evil.invalid" })).status, 403);
+  assert.equal(
+    (
+      await f.api("/admin/emails/test", {
+        method: "POST",
+        cookie: admin.cookie,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await f.api("/admin/emails/test", {
+        method: "POST",
+        ...admin,
+        origin: "https://evil.invalid",
+      })
+    ).status,
+    403,
+  );
   const sent = await f.api("/admin/emails/test", { method: "POST", ...admin });
   assert.equal(sent.status, 202);
   assert.equal(sent.data.pending, 1);
-  f.db.prepare("UPDATE email_outbox SET status = 'failed', attempts = 8, last_error = 'AccessDeniedException'").run();
+  await f.db.run(
+    "UPDATE email_outbox SET status = 'failed', attempts = 8, last_error = 'AccessDeniedException'",
+  );
   assert.equal((await f.api("/admin/emails", admin)).data.failed, 1);
-  assert.equal((await f.api("/admin/emails/retry", { method: "POST", ...admin })).status, 202);
-  const row = f.db.prepare("SELECT * FROM email_outbox").get();
+  assert.equal(
+    (await f.api("/admin/emails/retry", { method: "POST", ...admin })).status,
+    202,
+  );
+  const row = await f.db.get("SELECT * FROM email_outbox");
   assert.equal(row.status, "pending");
   assert.equal(row.attempts, 0);
   assert.equal(row.last_error, null);
-  f.db.prepare("UPDATE email_outbox SET status = 'sent', sent_at = ?").run(Date.now());
+  await f.db.run(
+    "UPDATE email_outbox SET status = 'sent', sent_at = ?",
+    Date.now(),
+  );
   await f.api("/admin/emails/retry", { method: "POST", ...admin });
   assert.equal((await f.api("/admin/emails", admin)).data.sent, 1);
   for (let i = 0; i < 3; i++)
-    assert.equal((await f.api("/admin/emails/test", { method: "POST", ...admin })).status, 202);
-  assert.equal((await f.api("/admin/emails/test", { method: "POST", ...admin })).status, 429);
+    assert.equal(
+      (await f.api("/admin/emails/test", { method: "POST", ...admin })).status,
+      202,
+    );
+  assert.equal(
+    (await f.api("/admin/emails/test", { method: "POST", ...admin })).status,
+    429,
+  );
   assert.equal(f.calls(), 0);
 });
 
@@ -440,7 +596,7 @@ test("Google login binds state, nonce, verified email, and the configured allowl
         /^https:\/\/ceetool\.com\/admin\?error=google_login$/,
       );
       assert.equal(
-        f.db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count,
+        (await f.db.get("SELECT COUNT(*) AS count FROM sessions")).count,
         0,
       );
     });
@@ -452,15 +608,21 @@ test("Google login binds state, nonce, verified email, and the configured allowl
     /^https:\/\/ceetool\.com\/admin\?error=google_login$/,
   );
   const login = await f.login();
-  assert.equal(login.response.headers.get("location"), `${PUBLIC_SITE_URL}/admin`);
   assert.equal(
-    f.db.prepare("SELECT COUNT(*) AS count FROM oauth_states").get().count,
+    login.response.headers.get("location"),
+    `${PUBLIC_SITE_URL}/admin`,
+  );
+  assert.equal(
+    (await f.db.get("SELECT COUNT(*) AS count FROM oauth_states")).count,
     0,
   );
   const again = await f.api(`/admin/callback?state=${login.state}&code=test`, {
     cookie: login.cookie,
   });
-  assert.equal(again.response.headers.get("location"), `${PUBLIC_SITE_URL}/admin?error=google_login`);
+  assert.equal(
+    again.response.headers.get("location"),
+    `${PUBLIC_SITE_URL}/admin?error=google_login`,
+  );
   assert.equal((await f.api("/admin/invoices")).status, 401);
   const logout = await f.api("/admin/logout", { method: "POST", ...login });
   assert.equal(logout.status, 204);
@@ -555,22 +717,27 @@ test("optional terms and customer prefill are validated, consented and hidden af
   assert.equal(paid.buyerName, undefined);
   assert.equal(paid.buyerPhone, undefined);
   const expired = await f.invoice({ terms: "", buyerName: "숨길 이름" }, admin);
-  f.db
-    .prepare("UPDATE invoices SET expires_at = 1 WHERE token = ?")
-    .run(expired.token);
+  await f.db.run(
+    "UPDATE invoices SET expires_at = 1 WHERE token = ?",
+    expired.token,
+  );
   assert.equal(
     (await f.api(`/invoices/${expired.token}`)).data.buyerName,
     undefined,
   );
   const phoneOnly = await f.invoice({ buyerPhone: "01012345678" }, admin);
-  f.db
-    .prepare("UPDATE invoices SET expires_at = 1 WHERE token = ?")
-    .run(phoneOnly.token);
-  purgePersonalData(f.db);
+  await f.db.run(
+    "UPDATE invoices SET expires_at = 1 WHERE token = ?",
+    phoneOnly.token,
+  );
+  await purgePersonalData(f.db);
   assert.equal(
-    f.db
-      .prepare("SELECT buyer_phone FROM invoices WHERE token = ?")
-      .get(phoneOnly.token).buyer_phone,
+    (
+      await f.db.get(
+        "SELECT buyer_phone FROM invoices WHERE token = ?",
+        phoneOnly.token,
+      )
+    ).buyer_phone,
     null,
   );
   for (const invalid of [
@@ -723,24 +890,26 @@ test("history is server-paginated by twenty with literal search and derived expi
   );
 });
 
-test("saved default terms survive reopening the SQLite database", () => {
-  const directory = mkdtempSync(join(tmpdir(), "ceetool-settings-"));
-  const path = join(directory, "payments.sqlite");
-  let db = openDatabase(path);
+test("saved default terms survive reopening the MySQL connection pool", async (t) => {
+  let db = await createTestDatabase(t);
+  const config = db.config;
   try {
-    db.prepare(
-      "INSERT INTO settings (key, value) VALUES ('default_terms', ?)",
-    ).run("저장된 기본 조건");
-    db.close();
-    db = openDatabase(path);
+    await db.run(
+      "INSERT INTO settings (setting_key, value) VALUES ('default_terms', ?)",
+      "저장된 기본 조건",
+    );
+    await db.close();
+    db = await openDatabase(config);
     assert.equal(
-      db.prepare("SELECT value FROM settings WHERE key = 'default_terms'").get()
-        .value,
+      (
+        await db.get(
+          "SELECT value FROM settings WHERE setting_key = 'default_terms'",
+        )
+      ).value,
       "저장된 기본 조건",
     );
   } finally {
-    db.close();
-    rmSync(directory, { recursive: true, force: true });
+    await db.close();
   }
 });
 
@@ -798,9 +967,10 @@ test("checkout signs server amount, requires consent and locks expired or supers
     ).status,
     409,
   );
-  f.db
-    .prepare("UPDATE invoices SET expires_at = 1 WHERE token = ?")
-    .run(invoice.token);
+  await f.db.run(
+    "UPDATE invoices SET expires_at = 1 WHERE token = ?",
+    invoice.token,
+  );
   assert.equal(
     (await f.api(`/invoices/${invoice.token}`)).data.state,
     "expired",
@@ -1023,7 +1193,7 @@ test("verified notifications reconcile timeouts, reject forgery, and do not resu
   await notify(good);
   assert.equal((await f.api(`/invoices/${invoice.token}`)).data.state, "paid");
   assert.equal(
-    f.db.prepare("SELECT COUNT(*) AS count FROM notifications").get().count,
+    (await f.db.get("SELECT COUNT(*) AS count FROM notifications")).count,
     1,
   );
   const cancelled = f.notify(checkout, auth, {
@@ -1068,7 +1238,7 @@ test("0000 approval notifications use cancelYN, deduplicate and cannot resurrect
   assert.equal(current.state, "paid");
   assert.equal(current.paidAt, paidAt);
   assert.equal(
-    f.db.prepare("SELECT COUNT(*) AS n FROM notifications").get().n,
+    (await f.db.get("SELECT COUNT(*) AS n FROM notifications")).n,
     1,
   );
   await notify({ ...approved, cancelYN: "Y" });
@@ -1077,7 +1247,7 @@ test("0000 approval notifications use cancelYN, deduplicate and cannot resurrect
     "review",
   );
   assert.equal(
-    f.db.prepare("SELECT COUNT(*) AS n FROM notifications").get().n,
+    (await f.db.get("SELECT COUNT(*) AS n FROM notifications")).n,
     2,
   );
   await notify({
@@ -1332,17 +1502,16 @@ test("receipt reconciliation limits each batch to five and never touches unpaid 
   );
 });
 
-test("SQLite survives reopen and removes personal data according to declared retention", () => {
+test("MySQL survives reconnect, restores a consistent dump, and retains personal data correctly", async (t) => {
   const directory = mkdtempSync(join(tmpdir(), "ceetool-payments-test-"));
   try {
-    const path = join(directory, "payments.sqlite");
-    let db = openDatabase(path);
+    let db = await createTestDatabase(t);
+    const config = db.config;
     const now = Date.now();
-    db.prepare(
+    await db.run(
       `INSERT INTO invoices
       (token,order_no,title,amount,tax_type,terms,expires_at,created_at,buyer_name,buyer_phone)
       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    ).run(
       "retention-token",
       "retention-order",
       "계약금",
@@ -1354,32 +1523,30 @@ test("SQLite survives reopen and removes personal data according to declared ret
       "고객",
       "01012345678",
     );
-    db.close();
-    db = openDatabase(path);
-    assert.equal(db.prepare("SELECT amount FROM invoices").get().amount, 100);
-    const backup = backupDatabase(path, join(directory, "backups"));
-    const snapshot = openDatabase(backup);
+    await db.close();
+    db = await openDatabase(config);
+    assert.equal((await db.get("SELECT amount FROM invoices")).amount, 100);
+    const backup = await backupDatabase(config, join(directory, "backups"));
+    const snapshot = await createTestDatabase(t);
+    await restoreTestDump(snapshot, readFileSync(backup, "utf8"));
     assert.equal(
-      snapshot.prepare("SELECT amount FROM invoices").get().amount,
+      (await snapshot.get("SELECT amount FROM invoices")).amount,
       100,
     );
-    snapshot.close();
-    purgePersonalData(db, now);
+    await snapshot.close();
+    await purgePersonalData(db, now);
     assert.equal(
-      db.prepare("SELECT buyer_name FROM invoices").get().buyer_name,
+      (await db.get("SELECT buyer_name FROM invoices")).buyer_name,
       null,
     );
     assert.equal(
-      db.prepare("SELECT buyer_phone FROM invoices").get().buyer_phone,
+      (await db.get("SELECT buyer_phone FROM invoices")).buyer_phone,
       null,
     );
-    db.prepare("UPDATE invoices SET state = 'processing'").run();
-    recoverInterruptedApprovals(db);
-    assert.equal(
-      db.prepare("SELECT state FROM invoices").get().state,
-      "review",
-    );
-    db.close();
+    await db.run("UPDATE invoices SET state = 'processing'");
+    await recoverInterruptedApprovals(db);
+    assert.equal((await db.get("SELECT state FROM invoices")).state, "review");
+    await db.close();
     assert.equal(digest("session").length, 64);
   } finally {
     rmSync(directory, { recursive: true, force: true });

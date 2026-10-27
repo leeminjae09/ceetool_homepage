@@ -4,13 +4,10 @@ import { openDatabase } from "./database.mjs";
 import { createPaysm } from "./paysm.mjs";
 
 export async function reconcileReviews(db, provider, logger = console) {
-  const invoices = db
-    .prepare(
-      `SELECT * FROM invoices WHERE state = 'review' AND tid IS NOT NULL
+  const invoices =
+    await db.all(`SELECT * FROM invoices WHERE state = 'review' AND tid IS NOT NULL
        AND (noti_code IS NULL OR noti_code = '0000')
-       ORDER BY created_at LIMIT 5`,
-    )
-    .all();
+       ORDER BY created_at LIMIT 5`);
   const report = { checked: 0, recovered: 0, unresolved: 0, remaining: 0 };
   for (const invoice of invoices) {
     report.checked++;
@@ -44,26 +41,23 @@ export async function reconcileReviews(db, provider, logger = console) {
         );
         continue;
       }
-      db.exec("BEGIN IMMEDIATE");
-      try {
-        const updated = db
-          .prepare(
-            `UPDATE invoices SET state = 'paid', paid_at = COALESCE(paid_at, ?),
+      await db.transaction(async () => {
+        const updated = await db.run(
+          `UPDATE invoices SET state = 'paid', paid_at = COALESCE(paid_at, ?),
              note = '', noti_code = '3001'
              WHERE token = ? AND state = 'review' AND tid = ?
-             AND noti_code IS ? AND noti_date IS ?`,
-          )
-          .run(
-            Date.now(),
-            invoice.token,
-            invoice.tid,
-            invoice.noti_code,
-            invoice.noti_date,
-          );
+             AND noti_code <=> ? AND noti_date <=> ?`,
+          Date.now(),
+          invoice.token,
+          invoice.tid,
+          invoice.noti_code,
+          invoice.noti_date,
+        );
         if (updated.changes) {
-          db.prepare(
+          await db.run(
             "UPDATE attempts SET state = 'paid' WHERE invoice_token = ? AND state IN ('processing','review')",
-          ).run(invoice.token);
+            invoice.token,
+          );
           report.recovered++;
         } else {
           report.unresolved++;
@@ -74,11 +68,7 @@ export async function reconcileReviews(db, provider, logger = console) {
             }),
           );
         }
-        db.exec("COMMIT");
-      } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
-      }
+      });
     } catch (error) {
       report.unresolved++;
       logger.error(
@@ -89,12 +79,10 @@ export async function reconcileReviews(db, provider, logger = console) {
       );
     }
   }
-  report.remaining = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM invoices WHERE state = 'review'
-       AND tid IS NOT NULL AND (noti_code IS NULL OR noti_code = '0000')`,
-    )
-    .get().count;
+  report.remaining = (
+    await db.get(`SELECT COUNT(*) AS count FROM invoices WHERE state = 'review'
+       AND tid IS NOT NULL AND (noti_code IS NULL OR noti_code = '0000')`)
+  ).count;
   return report;
 }
 
@@ -104,12 +92,12 @@ if (
 ) {
   const config = loadConfig();
   if (!paymentReady(config)) throw new Error("Payment credentials are missing");
-  const db = openDatabase(config.dbPath);
+  const db = await openDatabase(config.database);
   try {
     const report = await reconcileReviews(db, createPaysm(config));
     console.log(JSON.stringify({ event: "payment_reconciliation", ...report }));
     if (report.remaining || report.unresolved) process.exitCode = 1;
   } finally {
-    db.close();
+    await db.close();
   }
 }

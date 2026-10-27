@@ -2,7 +2,7 @@ name: CI/CD SSH Deploy
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "mysql-storage"]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,22 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-only-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      MYSQL_TEST_HOST: 127.0.0.1
+      MYSQL_TEST_USER: root
+      MYSQL_TEST_PASSWORD: ci-test-only-password
     steps:
       - name: Check out deployment source
         uses: actions/checkout@v4
@@ -48,9 +64,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/payments-release/runtime" "$RUNNER_TEMP/payments-release/server"
           cp "$(command -v node)" "$RUNNER_TEMP/payments-release/runtime/node"
           cp -a server/src server/deploy server/node_modules server/package.json server/package-lock.json server/.env.example "$RUNNER_TEMP/payments-release/server/"
+          cp tables.sql "$RUNNER_TEMP/payments-release/"
           tar -czf payments-release.tar.gz -C "$RUNNER_TEMP/payments-release" .
 
       - name: Upload production files
+        if: github.ref == 'refs/heads/main'
         uses: appleboy/scp-action@v1
         with:
           host: 43.202.220.56
@@ -62,6 +80,7 @@ jobs:
           overwrite: true
 
       - name: Set static file permissions
+        if: github.ref == 'refs/heads/main'
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: 43.202.220.56
@@ -77,6 +96,7 @@ jobs:
             sudo chmod -R o+rX dist
 
       - name: Deploy payment server and scoped Nginx routes
+        if: github.ref == 'refs/heads/main'
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: 43.202.220.56
@@ -93,6 +113,7 @@ jobs:
             rm /home/ubuntu/ceetool_homepage/payments-release.tar.gz
 
       - name: Verify live deployment
+        if: github.ref == 'refs/heads/main'
         env:
           SITE_URL: https://ceetool.com
         run: |

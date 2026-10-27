@@ -54,16 +54,8 @@ const cookieValue = (req, name) =>
     .find((part) => part.startsWith(`${name}=`))
     ?.slice(name.length + 1);
 
-function transaction(db, fn) {
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const result = fn();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+async function transaction(db, fn) {
+  return db.transaction(fn);
 }
 
 function googleClient(config) {
@@ -147,19 +139,21 @@ export function createPaymentApp({
   };
   const log = (event, reason) =>
     logger.error(JSON.stringify({ event, reason }));
-  const getInvoice = (value) => {
+  const getInvoice = async (value, lock = false) => {
     requireValue(validToken(value), 404, "결제 링크를 찾을 수 없습니다.");
-    const invoice = db
-      .prepare("SELECT * FROM invoices WHERE token = ?")
-      .get(value);
+    const invoice = await db.get(
+      `SELECT * FROM invoices WHERE token = ?${lock ? " FOR UPDATE" : ""}`,
+      value,
+    );
     requireValue(invoice, 404, "결제 링크를 찾을 수 없습니다.");
     return invoice;
   };
-  const getAttempt = (value) => {
+  const getAttempt = async (value, lock = false) => {
     requireValue(validToken(value), 404, "결제 요청을 찾을 수 없습니다.");
-    const attempt = db
-      .prepare("SELECT * FROM attempts WHERE token = ?")
-      .get(value);
+    const attempt = await db.get(
+      `SELECT * FROM attempts WHERE token = ?${lock ? " FOR UPDATE" : ""}`,
+      value,
+    );
     requireValue(attempt, 404, "결제 요청을 찾을 수 없습니다.");
     return attempt;
   };
@@ -178,7 +172,7 @@ export function createPaymentApp({
     );
     next();
   }
-  function admin(req, res, next) {
+  async function admin(req, res, next) {
     requireValue(
       googleReady(config),
       503,
@@ -186,9 +180,11 @@ export function createPaymentApp({
     );
     const secret = cookieValue(req, cookieName);
     const session = validToken(secret)
-      ? db
-          .prepare("SELECT * FROM sessions WHERE hash = ? AND expires_at > ?")
-          .get(digest(secret), Date.now())
+      ? await db.get(
+          "SELECT * FROM sessions WHERE hash = ? AND expires_at > ?",
+          digest(secret),
+          Date.now(),
+        )
       : undefined;
     requireValue(
       session && config.adminEmails.includes(session.email),
@@ -214,60 +210,113 @@ export function createPaymentApp({
     );
   }
   const emailLimit = rateLimit({
-    windowMs: 3600000, limit: 6, standardHeaders: "draft-8", legacyHeaders: false,
-    message: { error: "메일 작업 요청이 많습니다. 잠시 후 다시 시도해 주세요." },
+    windowMs: 3600000,
+    limit: 6,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: {
+      error: "메일 작업 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+    },
   });
-  app.get(`${API_PATH}/admin/emails`, admin, (req, res) => res.json(emailStatus(db)));
-  app.post(`${API_PATH}/admin/emails/test`, sameOrigin, admin, csrf, emailLimit, (req, res) => {
-    queueManualTest(db);
-    res.status(202).json(emailStatus(db));
-  });
-  app.post(`${API_PATH}/admin/emails/retry`, sameOrigin, admin, csrf, emailLimit, (req, res) => {
-    db.prepare(`UPDATE email_outbox SET status = 'pending', attempts = 0, next_at = ?,
-      last_error = NULL WHERE status IN ('failed','pending') AND last_error IS NOT NULL`).run(Date.now());
-    res.status(202).json(emailStatus(db));
-  });
-  app.post(`${API_PATH}/invoices/:token/visit`, sameOrigin, (req, res) => {
-    const invoice = getInvoice(req.params.token);
-    const name = config.production ? "__Host-ceetool_visitor" : "ceetool_visitor";
-    let visitor = cookieValue(req, name);
-    if (!validToken(visitor)) {
-      visitor = token();
-      res.cookie(name, visitor, { ...cookieOptions, maxAge: 30 * 86400000 });
-    }
-    const now = Date.now();
-    transaction(db, () => {
-      const changed = db.prepare(`INSERT INTO payment_visits VALUES (?, ?, ?)
-        ON CONFLICT(invoice_token, visitor_hash) DO UPDATE SET notified_at = excluded.notified_at
-        WHERE payment_visits.notified_at <= excluded.notified_at - 1800000`)
-        .run(invoice.token, digest(visitor), now);
-      if (changed.changes)
-        queueEmail(db, `visit:${token()}`, "visit", invoice, now);
-    });
-    res.status(204).end();
-  });
-  function incompleteAttempt(attempt) {
-    transaction(db, () => {
-      const invoice = getInvoice(attempt.invoice_token);
-      const changed = db.prepare(`UPDATE attempts SET state = 'closed'
-        WHERE token = ? AND state = 'prepared' AND created_at > ?`)
-        .run(attempt.token, Date.now() - 15 * 60000);
+  app.get(`${API_PATH}/admin/emails`, admin, async (req, res) =>
+    res.json(await emailStatus(db)),
+  );
+  app.post(
+    `${API_PATH}/admin/emails/test`,
+    sameOrigin,
+    admin,
+    csrf,
+    emailLimit,
+    async (req, res) => {
+      await queueManualTest(db);
+      res.status(202).json(await emailStatus(db));
+    },
+  );
+  app.post(
+    `${API_PATH}/admin/emails/retry`,
+    sameOrigin,
+    admin,
+    csrf,
+    emailLimit,
+    async (req, res) => {
+      await db.run(
+        `UPDATE email_outbox SET status = 'pending', attempts = 0, next_at = ?,
+      last_error = NULL WHERE status IN ('failed','pending') AND last_error IS NOT NULL`,
+        Date.now(),
+      );
+      res.status(202).json(await emailStatus(db));
+    },
+  );
+  app.post(
+    `${API_PATH}/invoices/:token/visit`,
+    sameOrigin,
+    async (req, res) => {
+      const invoice = await getInvoice(req.params.token);
+      const name = config.production
+        ? "__Host-ceetool_visitor"
+        : "ceetool_visitor";
+      let visitor = cookieValue(req, name);
+      if (!validToken(visitor)) {
+        visitor = token();
+        res.cookie(name, visitor, { ...cookieOptions, maxAge: 30 * 86400000 });
+      }
+      const now = Date.now();
+      await transaction(db, async () => {
+        await getInvoice(invoice.token, true);
+        const previous = await db.get(
+          "SELECT notified_at FROM payment_visits WHERE invoice_token = ? AND visitor_hash = ?",
+          invoice.token,
+          digest(visitor),
+        );
+        if (previous && previous.notified_at > now - 1800000) return;
+        await db.run(
+          `INSERT INTO payment_visits VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE notified_at = ?`,
+          invoice.token,
+          digest(visitor),
+          now,
+          now,
+        );
+        await queueEmail(db, `visit:${token()}`, "visit", invoice, now);
+      });
+      res.status(204).end();
+    },
+  );
+  async function incompleteAttempt(attempt) {
+    await transaction(db, async () => {
+      const invoice = await getInvoice(attempt.invoice_token, true);
+      const changed = await db.run(
+        `UPDATE attempts SET state = 'closed'
+        WHERE token = ? AND state = 'prepared' AND created_at > ?`,
+        attempt.token,
+        Date.now() - 15 * 60000,
+      );
       if (changed.changes && invoice.state === "pending") {
-        db.prepare("UPDATE invoices SET note = ? WHERE token = ? AND state = 'pending'")
-          .run("결제 인증이 취소되었거나 완료되지 않았습니다.", invoice.token);
-        queueEmail(db, `auth:${attempt.token}`, "failed", invoice);
+        await db.run(
+          "UPDATE invoices SET note = ? WHERE token = ? AND state = 'pending'",
+          "결제 인증이 취소되었거나 완료되지 않았습니다.",
+          invoice.token,
+        );
+        await queueEmail(db, `auth:${attempt.token}`, "failed", invoice);
       }
     });
   }
-  app.post(`${API_PATH}/attempts/:attempt/failure`, sameOrigin, (req, res) => {
-    requireValue(object(req.body) && ["FAIL", "CANCEL"].includes(req.body.result),
-      400, "결제 인증 결과를 확인해 주세요.");
-    incompleteAttempt(getAttempt(req.params.attempt));
-    res.status(204).end();
-  });
+  app.post(
+    `${API_PATH}/attempts/:attempt/failure`,
+    sameOrigin,
+    async (req, res) => {
+      requireValue(
+        object(req.body) && ["FAIL", "CANCEL"].includes(req.body.result),
+        400,
+        "결제 인증 결과를 확인해 주세요.",
+      );
+      await incompleteAttempt(await getAttempt(req.params.attempt));
+      res.status(204).end();
+    },
+  );
 
-  app.get(`${API_PATH}/health`, (req, res) => {
-    db.prepare("SELECT 1").get();
+  app.get(`${API_PATH}/health`, async (req, res) => {
+    await db.get("SELECT 1");
     res.json({
       ok: true,
       paymentConfigured: paymentReady(config),
@@ -281,7 +330,7 @@ export function createPaymentApp({
     legacyHeaders: false,
     message: { error: "로그인 요청이 많습니다. 잠시 후 다시 시도해 주세요." },
   });
-  app.get(`${API_PATH}/admin/login`, loginLimiter, (req, res) => {
+  app.get(`${API_PATH}/admin/login`, loginLimiter, async (req, res) => {
     requireValue(
       googleReady(config),
       503,
@@ -291,9 +340,10 @@ export function createPaymentApp({
       verifier = token(),
       nonce = token(),
       now = Date.now();
-    db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").run(now);
-    db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now);
-    db.prepare("INSERT INTO oauth_states VALUES (?, ?, ?, ?)").run(
+    await db.run("DELETE FROM oauth_states WHERE expires_at <= ?", now);
+    await db.run("DELETE FROM sessions WHERE expires_at <= ?", now);
+    await db.run(
+      "INSERT INTO oauth_states VALUES (?, ?, ?, ?)",
       digest(state),
       verifier,
       nonce,
@@ -313,11 +363,19 @@ export function createPaymentApp({
         401,
         "Invalid OAuth state",
       );
-      const saved = db
-        .prepare(
-          "DELETE FROM oauth_states WHERE hash = ? AND expires_at > ? RETURNING *",
-        )
-        .get(digest(state), Date.now());
+      const saved = await transaction(db, async () => {
+        const row = await db.get(
+          "SELECT * FROM oauth_states WHERE hash = ? AND expires_at > ? FOR UPDATE",
+          digest(state),
+          Date.now(),
+        );
+        if (row)
+          await db.run(
+            "DELETE FROM oauth_states WHERE hash = ?",
+            digest(state),
+          );
+        return row;
+      });
       requireValue(saved, 401, "Expired OAuth state");
       const claims = await google.exchange(code, saved.verifier);
       const email =
@@ -331,7 +389,8 @@ export function createPaymentApp({
       );
       const secret = token(),
         csrfToken = token();
-      db.prepare("INSERT INTO sessions VALUES (?, ?, ?, ?)").run(
+      await db.run(
+        "INSERT INTO sessions VALUES (?, ?, ?, ?)",
         digest(secret),
         email,
         csrfToken,
@@ -356,14 +415,21 @@ export function createPaymentApp({
       paymentConfigured: paymentReady(config),
     }),
   );
-  app.post(`${API_PATH}/admin/logout`, sameOrigin, admin, csrf, (req, res) => {
-    db.prepare("DELETE FROM sessions WHERE hash = ?").run(
-      req.adminSession.hash,
-    );
-    res.clearCookie(cookieName, cookieOptions);
-    res.status(204).end();
-  });
-  app.get(`${API_PATH}/admin/invoices`, admin, (req, res) => {
+  app.post(
+    `${API_PATH}/admin/logout`,
+    sameOrigin,
+    admin,
+    csrf,
+    async (req, res) => {
+      await db.run(
+        "DELETE FROM sessions WHERE hash = ?",
+        req.adminSession.hash,
+      );
+      res.clearCookie(cookieName, cookieOptions);
+      res.status(204).end();
+    },
+  );
+  app.get(`${API_PATH}/admin/invoices`, admin, async (req, res) => {
     const page = req.query.page === undefined ? 0 : Number(req.query.page);
     requireValue(
       Number.isSafeInteger(page) && page >= 0 && page <= 1000000,
@@ -404,44 +470,54 @@ export function createPaymentApp({
       values.push(state);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const rows = db
-      .prepare(
-        `SELECT * FROM invoices ${where} ORDER BY created_at DESC, token DESC LIMIT 21 OFFSET ?`,
-      )
-      .all(...values, page * 20);
+    const rows = await db.all(
+      `SELECT * FROM invoices ${where} ORDER BY created_at DESC, token DESC LIMIT 21 OFFSET ?`,
+      ...values,
+      page * 20,
+    );
     res.json({
       invoices: rows.slice(0, 20).map((row) => invoiceView(row, true)),
       hasMore: rows.length > 20,
     });
   });
-  app.get(`${API_PATH}/admin/settings`, admin, (req, res) => {
+  app.get(`${API_PATH}/admin/settings`, admin, async (req, res) => {
     res.json({
       defaultTerms:
-        db
-          .prepare("SELECT value FROM settings WHERE key = 'default_terms'")
-          .get()?.value || "",
+        (
+          await db.get(
+            "SELECT value FROM settings WHERE setting_key = 'default_terms'",
+          )
+        )?.value || "",
     });
   });
-  app.put(`${API_PATH}/admin/settings`, sameOrigin, admin, csrf, (req, res) => {
-    requireValue(
-      object(req.body) &&
-        typeof req.body.defaultTerms === "string" &&
-        req.body.defaultTerms.length <= 2000,
-      400,
-      "기본 문구는 2000자 이내로 입력해 주세요.",
-    );
-    const defaultTerms = req.body.defaultTerms.trim();
-    db.prepare(
-      "INSERT INTO settings (key, value) VALUES ('default_terms', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    ).run(defaultTerms);
-    res.json({ defaultTerms });
-  });
+  app.put(
+    `${API_PATH}/admin/settings`,
+    sameOrigin,
+    admin,
+    csrf,
+    async (req, res) => {
+      requireValue(
+        object(req.body) &&
+          typeof req.body.defaultTerms === "string" &&
+          req.body.defaultTerms.length <= 2000,
+        400,
+        "기본 문구는 2000자 이내로 입력해 주세요.",
+      );
+      const defaultTerms = req.body.defaultTerms.trim();
+      await db.run(
+        "INSERT INTO settings (setting_key, value) VALUES ('default_terms', ?) ON DUPLICATE KEY UPDATE value = ?",
+        defaultTerms,
+        defaultTerms,
+      );
+      res.json({ defaultTerms });
+    },
+  );
   app.post(
     `${API_PATH}/admin/invoices`,
     sameOrigin,
     admin,
     csrf,
-    (req, res) => {
+    async (req, res) => {
       ready();
       const body = req.body;
       requireValue(object(body), 400, "결제 정보를 확인해 주세요.");
@@ -486,10 +562,9 @@ export function createPaymentApp({
       const id = token(),
         now = Date.now();
       const orderNo = `CT${ediDate()}${token().replace(/[-_]/g, "").slice(0, 10)}`;
-      db.prepare(
+      await db.run(
         `INSERT INTO invoices (token, order_no, title, amount, tax_type, terms, expires_at, created_at, buyer_name, buyer_phone)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
         id,
         orderNo,
         title.trim(),
@@ -501,12 +576,12 @@ export function createPaymentApp({
         buyerName.trim() || null,
         phone,
       );
-      res.status(201).json(invoiceView(getInvoice(id), true));
+      res.status(201).json(invoiceView(await getInvoice(id), true));
     },
   );
-  app.get(`${API_PATH}/invoices/:token`, (req, res) => {
+  app.get(`${API_PATH}/invoices/:token`, async (req, res) => {
     res.json({
-      ...invoiceView(getInvoice(req.params.token)),
+      ...invoiceView(await getInvoice(req.params.token)),
       paymentConfigured: paymentReady(config),
     });
   });
@@ -515,89 +590,101 @@ export function createPaymentApp({
     sameOrigin,
     admin,
     csrf,
-    (req, res) => {
-      const invoice = getInvoice(req.params.token);
+    async (req, res) => {
+      const invoice = await getInvoice(req.params.token);
       requireValue(
         invoice.state === "pending",
         409,
         "처리 중이거나 결제된 주문은 종료할 수 없습니다. PaySM 거래를 확인해 주세요.",
       );
-      transaction(db, () => {
-        const updated = db
-          .prepare(
-            "UPDATE invoices SET expires_at = ?, note = ? WHERE token = ? AND state = 'pending' RETURNING token",
-          )
-          .get(
-            Date.now() - 1,
-            "관리자가 결제 링크를 종료했습니다.",
-            invoice.token,
-          );
-        requireValue(updated, 409, "이미 처리 중인 결제입니다.");
-        db.prepare(
+      await transaction(db, async () => {
+        const updated = await db.run(
+          "UPDATE invoices SET expires_at = ?, note = ? WHERE token = ? AND state = 'pending'",
+          Date.now() - 1,
+          "관리자가 결제 링크를 종료했습니다.",
+          invoice.token,
+        );
+        requireValue(updated.changes, 409, "이미 처리 중인 결제입니다.");
+        await db.run(
           "UPDATE attempts SET state = 'closed' WHERE invoice_token = ? AND state = 'prepared'",
-        ).run(invoice.token);
+          invoice.token,
+        );
       });
-      res.json(invoiceView(getInvoice(invoice.token), true));
+      res.json(invoiceView(await getInvoice(invoice.token), true));
     },
   );
-  app.post(`${API_PATH}/invoices/:token/prepare`, sameOrigin, (req, res) => {
-    ready();
-    const invoice = getInvoice(req.params.token);
-    const body = req.body;
-    requireValue(object(body), 400, "주문자 정보를 확인해 주세요.");
-    requireValue(
-      invoice.state === "pending" && invoice.expires_at > Date.now(),
-      409,
-      "현재 결제할 수 없는 주문입니다. 결제 상태를 확인해 주세요.",
-    );
-    requireValue(text(body.name, 50), 400, "주문자 이름을 입력해 주세요.");
-    const phone = normalizePhone(body.phone);
-    requireValue(
-      body.consent === true && typeof body.mobile === "boolean",
-      400,
-      invoice.terms
-        ? "계약·환불조건과 개인정보 수집에 동의해 주세요."
-        : "개인정보 수집·이용에 동의해 주세요.",
-    );
-    const attempt = {
-      token: token(),
-      mid: config.mid,
-      edi_date: ediDate(),
-      created_at: Date.now(),
-    };
-    transaction(db, () => {
-      db.prepare(
-        "UPDATE attempts SET state = 'closed' WHERE invoice_token = ? AND state = 'prepared'",
-      ).run(invoice.token);
-      db.prepare(
-        "INSERT INTO attempts (token, invoice_token, mid, edi_date, created_at) VALUES (?, ?, ?, ?, ?)",
-      ).run(
-        attempt.token,
-        invoice.token,
-        attempt.mid,
-        attempt.edi_date,
-        attempt.created_at,
+  app.post(
+    `${API_PATH}/invoices/:token/prepare`,
+    sameOrigin,
+    async (req, res) => {
+      ready();
+      const invoice = await getInvoice(req.params.token);
+      const body = req.body;
+      requireValue(object(body), 400, "주문자 정보를 확인해 주세요.");
+      requireValue(
+        invoice.state === "pending" && invoice.expires_at > Date.now(),
+        409,
+        "현재 결제할 수 없는 주문입니다. 결제 상태를 확인해 주세요.",
       );
-      db.prepare(
-        "UPDATE invoices SET buyer_name = ?, buyer_phone = ?, consent_at = ?, note = '' WHERE token = ?",
-      ).run(body.name.trim(), phone, Date.now(), invoice.token);
-    });
-    res.json({
-      attemptToken: attempt.token,
-      action: `${PAYSM_BASE_URL}/payInit_hash.do`,
-      fields: initialFields(
-        config,
-        getInvoice(invoice.token),
-        attempt,
-        body.mobile,
-      ),
-    });
-  });
+      requireValue(text(body.name, 50), 400, "주문자 이름을 입력해 주세요.");
+      const phone = normalizePhone(body.phone);
+      requireValue(
+        body.consent === true && typeof body.mobile === "boolean",
+        400,
+        invoice.terms
+          ? "계약·환불조건과 개인정보 수집에 동의해 주세요."
+          : "개인정보 수집·이용에 동의해 주세요.",
+      );
+      const attempt = {
+        token: token(),
+        mid: config.mid,
+        edi_date: ediDate(),
+        created_at: Date.now(),
+      };
+      await transaction(db, async () => {
+        const current = await getInvoice(invoice.token, true);
+        requireValue(
+          current.state === "pending" && current.expires_at > Date.now(),
+          409,
+          "현재 결제할 수 없는 주문입니다. 결제 상태를 확인해 주세요.",
+        );
+        await db.run(
+          "UPDATE attempts SET state = 'closed' WHERE invoice_token = ? AND state = 'prepared'",
+          invoice.token,
+        );
+        await db.run(
+          "INSERT INTO attempts (token, invoice_token, mid, edi_date, created_at) VALUES (?, ?, ?, ?, ?)",
+          attempt.token,
+          invoice.token,
+          attempt.mid,
+          attempt.edi_date,
+          attempt.created_at,
+        );
+        await db.run(
+          "UPDATE invoices SET buyer_name = ?, buyer_phone = ?, consent_at = ?, note = '' WHERE token = ?",
+          body.name.trim(),
+          phone,
+          Date.now(),
+          invoice.token,
+        );
+      });
+      res.json({
+        attemptToken: attempt.token,
+        action: `${PAYSM_BASE_URL}/payInit_hash.do`,
+        fields: initialFields(
+          config,
+          await getInvoice(invoice.token),
+          attempt,
+          body.mobile,
+        ),
+      });
+    },
+  );
 
   async function approve(attemptId, auth) {
     ready();
-    const attempt = getAttempt(attemptId),
-      invoice = getInvoice(attempt.invoice_token);
+    const attempt = await getAttempt(attemptId),
+      invoice = await getInvoice(attempt.invoice_token);
     requireValue(
       object(auth) && auth.resultCode === "0000",
       400,
@@ -638,21 +725,41 @@ export function createPaymentApp({
       "결제 요청이 만료되었습니다.",
     );
     requireValue(
-      !db.prepare("SELECT token FROM invoices WHERE tid = ?").get(auth.tid),
+      !(await db.get("SELECT token FROM invoices WHERE tid = ?", auth.tid)),
       409,
       "이미 사용된 거래번호입니다.",
     );
-    transaction(db, () => {
-      const claimed = db
-        .prepare(
-          "UPDATE invoices SET state = 'processing', tid = ? WHERE token = ? AND state = 'pending' RETURNING token",
-        )
-        .get(auth.tid, invoice.token);
-      requireValue(claimed, 409, "이미 처리 중인 결제 요청입니다.");
-      db.prepare(
+    const claimed = await transaction(db, async () => {
+      const current = await getInvoice(invoice.token, true);
+      const active = await getAttempt(attempt.token, true);
+      if (current.state !== "pending") {
+        requireValue(
+          current.tid === auth.tid &&
+            ["processing", "paid", "review"].includes(active.state),
+          409,
+          "이미 처리 중인 결제 요청입니다.",
+        );
+        return false;
+      }
+      requireValue(
+        active.state === "prepared" &&
+          current.expires_at > Date.now() &&
+          Date.now() - active.created_at < 15 * 60000,
+        409,
+        "결제 요청이 만료되었습니다.",
+      );
+      await db.run(
+        "UPDATE invoices SET state = 'processing', tid = ? WHERE token = ? AND state = 'pending'",
+        auth.tid,
+        invoice.token,
+      );
+      await db.run(
         "UPDATE attempts SET state = 'processing' WHERE token = ?",
-      ).run(attempt.token);
+        attempt.token,
+      );
+      return true;
     });
+    if (!claimed) return invoiceView(await getInvoice(invoice.token));
     try {
       const result = await provider.approve(auth);
       const matches =
@@ -668,44 +775,47 @@ export function createPaymentApp({
             ? result.resultCd
             : "invalid_response",
         );
-        db.prepare(
+        await db.run(
           "UPDATE invoices SET state = 'review', note = ? WHERE token = ? AND state = 'processing'",
-        ).run(
           "승인 결과를 확인 중입니다. 다시 결제하지 말고 담당자에게 문의해 주세요.",
           invoice.token,
         );
-        db.prepare(
+        await db.run(
           "UPDATE attempts SET state = 'review' WHERE token = ? AND state = 'processing'",
-        ).run(attempt.token);
+          attempt.token,
+        );
       } else {
-        transaction(db, () => {
-          db.prepare(
+        await transaction(db, async () => {
+          await db.run(
             "UPDATE invoices SET state = 'paid', paid_at = ?, note = '' WHERE token = ? AND state = 'processing'",
-          ).run(Date.now(), invoice.token);
-          db.prepare(
+            Date.now(),
+            invoice.token,
+          );
+          await db.run(
             "UPDATE attempts SET state = 'paid' WHERE token = ? AND state = 'processing'",
-          ).run(attempt.token);
+            attempt.token,
+          );
         });
       }
     } catch (error) {
       log("payment_approval_unconfirmed", error.name);
-      db.prepare(
+      await db.run(
         "UPDATE invoices SET state = 'review', note = ? WHERE token = ? AND state = 'processing'",
-      ).run(
         "승인 응답을 확인하지 못했습니다. 다시 결제하지 말고 담당자에게 문의해 주세요.",
         invoice.token,
       );
-      db.prepare(
+      await db.run(
         "UPDATE attempts SET state = 'review' WHERE token = ? AND state = 'processing'",
-      ).run(attempt.token);
+        attempt.token,
+      );
     }
-    return invoiceView(getInvoice(invoice.token));
+    return invoiceView(await getInvoice(invoice.token));
   }
   app.post(`${API_PATH}/approve/:attempt`, sameOrigin, async (req, res) => {
     res.json(await approve(req.params.attempt, req.body));
   });
   app.post(`${API_PATH}/return/:attempt`, async (req, res) => {
-    const attempt = getAttempt(req.params.attempt);
+    const attempt = await getAttempt(req.params.attempt);
     try {
       if (req.body?.resultCode === "0000")
         await approve(attempt.token, req.body);
@@ -715,30 +825,32 @@ export function createPaymentApp({
           400,
           "결제 인증 결과가 올바르지 않습니다.",
         );
-        incompleteAttempt(attempt);
+        await incompleteAttempt(attempt);
       }
     } catch (error) {
       log(
         "payment_return_rejected",
         error instanceof HttpError ? error.message : "internal_error",
       );
-      const current = getInvoice(attempt.invoice_token);
-      if (current.state === "pending" && getAttempt(attempt.token).state === "prepared" &&
-          Date.now() - attempt.created_at < 15 * 60000)
-        queueEmail(db, `auth:${attempt.token}`, "failed", current);
-      db.prepare(
+      const current = await getInvoice(attempt.invoice_token);
+      if (
+        current.state === "pending" &&
+        (await getAttempt(attempt.token)).state === "prepared" &&
+        Date.now() - attempt.created_at < 15 * 60000
+      )
+        await queueEmail(db, `auth:${attempt.token}`, "failed", current);
+      await db.run(
         "UPDATE invoices SET note = ? WHERE token = ? AND state = 'pending'",
-      ).run(
         "결제 인증 결과를 확인하지 못했습니다. 담당자에게 문의해 주세요.",
         attempt.invoice_token,
       );
     }
     res.redirect(303, `${PUBLIC_SITE_URL}/pay/${attempt.invoice_token}/result`);
   });
-  app.post(`${API_PATH}/notify/:attempt`, (req, res) => {
+  app.post(`${API_PATH}/notify/:attempt`, async (req, res) => {
     ready();
-    const attempt = getAttempt(req.params.attempt),
-      invoice = getInvoice(attempt.invoice_token),
+    const attempt = await getAttempt(req.params.attempt),
+      invoice = await getInvoice(attempt.invoice_token),
       body = req.body;
     requireValue(
       object(body) &&
@@ -785,10 +897,17 @@ export function createPaymentApp({
         ...(body.cancelYN === undefined ? [] : [body.cancelYN]),
       ]),
     );
-    transaction(db, () => {
-      const inserted = db
-        .prepare("INSERT OR IGNORE INTO notifications VALUES (?, ?, ?, ?, ?)")
-        .run(fingerprint, invoice.token, body.resultCd, body.amt, Date.now());
+    await transaction(db, async () => {
+      const invoice = await getInvoice(attempt.invoice_token, true);
+      const inserted = await db.run(
+        `INSERT INTO notifications VALUES (?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE fingerprint = fingerprint`,
+        fingerprint,
+        invoice.token,
+        body.resultCd,
+        body.amt,
+        Date.now(),
+      );
       if (!inserted.changes) return;
       if (invoice.noti_date && body.ediDate < invoice.noti_date) return;
       const approval =
@@ -797,10 +916,15 @@ export function createPaymentApp({
           (body.cancelYN === undefined || body.cancelYN === "N"));
       if (approval && body.amt === String(invoice.amount)) {
         if (!invoice.noti_code || invoice.noti_code === "3001") {
-          db.prepare(
+          await db.run(
             "UPDATE invoices SET state = 'paid', paid_at = COALESCE(paid_at, ?), note = '', noti_code = ?, noti_date = ? WHERE token = ? AND state IN ('processing','review','paid')",
-          ).run(Date.now(), "3001", body.ediDate, invoice.token);
-          db.prepare("UPDATE attempts SET state = 'paid' WHERE token = ?").run(
+            Date.now(),
+            "3001",
+            body.ediDate,
+            invoice.token,
+          );
+          await db.run(
+            "UPDATE attempts SET state = 'paid' WHERE token = ?",
             attempt.token,
           );
         } else {
@@ -811,9 +935,8 @@ export function createPaymentApp({
         }
       } else {
         log("payment_notification_review", body.resultCd);
-        db.prepare(
+        await db.run(
           "UPDATE invoices SET state = 'review', note = ?, noti_code = ?, noti_date = ? WHERE token = ?",
-        ).run(
           "서버 통지를 수신했습니다. PaySM 관리자에서 승인·취소 상태를 확인해야 합니다.",
           ["0000", "3001"].includes(body.resultCd) && body.cancelYN === "Y"
             ? "2001"
