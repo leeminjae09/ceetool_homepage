@@ -35,7 +35,7 @@ test("SES uses fixed sender/recipient and safe UTF-8 content, not customer crede
   assert.deepEqual(command.Destination, { ToAddresses: ["john@ceetool.com"] });
   assert.equal(command.Content.Simple.Subject.Charset, "UTF-8");
   assert.match(command.Content.Simple.Body.Text.Data, /1,250,000원/);
-  assert.match(command.Content.Simple.Body.Text.Data, /https:\/\/ceetool.com\/admin\/payments/);
+  assert.match(command.Content.Simple.Body.Text.Data, /관리자: https:\/\/ceetool\.com\/admin$/);
   for (const secret of [invoice.buyer_name, invoice.buyer_phone, invoice.token, invoice.tid, invoice.signData]) {
     assert.ok(!JSON.stringify(command).includes(secret));
     assert.ok(!row.payload.includes(secret));

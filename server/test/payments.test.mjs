@@ -437,7 +437,7 @@ test("Google login binds state, nonce, verified email, and the configured allowl
       const login = await f.login();
       assert.match(
         login.response.headers.get("location"),
-        /error=google_login$/,
+        /^https:\/\/ceetool\.com\/admin\?error=google_login$/,
       );
       assert.equal(
         f.db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count,
@@ -449,10 +449,10 @@ test("Google login binds state, nonce, verified email, and the configured allowl
   const badState = await f.api("/admin/callback?state=bad&code=test");
   assert.match(
     badState.response.headers.get("location"),
-    /error=google_login$/,
+    /^https:\/\/ceetool\.com\/admin\?error=google_login$/,
   );
   const login = await f.login();
-  assert.match(login.response.headers.get("location"), /\/admin\/payments$/);
+  assert.equal(login.response.headers.get("location"), `${PUBLIC_SITE_URL}/admin`);
   assert.equal(
     f.db.prepare("SELECT COUNT(*) AS count FROM oauth_states").get().count,
     0,
@@ -460,7 +460,7 @@ test("Google login binds state, nonce, verified email, and the configured allowl
   const again = await f.api(`/admin/callback?state=${login.state}&code=test`, {
     cookie: login.cookie,
   });
-  assert.match(again.response.headers.get("location"), /error=google_login$/);
+  assert.equal(again.response.headers.get("location"), `${PUBLIC_SITE_URL}/admin?error=google_login`);
   assert.equal((await f.api("/admin/invoices")).status, 401);
   const logout = await f.api("/admin/logout", { method: "POST", ...login });
   assert.equal(logout.status, 204);

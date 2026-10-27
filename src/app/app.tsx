@@ -1,4 +1,10 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Routes,
+  Route,
+  useLocation,
+} from "react-router-dom";
 import { useState } from "react";
 import DocumentationPage from "components/ProjectPage";
 import ProjectDialog from "components/ProjectDialog";
@@ -115,6 +121,11 @@ function Home() {
   );
 }
 
+function LegacyAdminRedirect() {
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: "/admin", search, hash }} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -123,7 +134,8 @@ function App() {
         <Route path="/docs/:docType" element={<DocumentationPage />} />
         <Route path="/pay/:token" element={<PaymentPage />} />
         <Route path="/pay/:token/result" element={<PaymentResultPage />} />
-        <Route path="/admin/payments" element={<PaymentAdminPage />} />
+        <Route path="/admin" element={<PaymentAdminPage />} />
+        <Route path="/admin/payments" element={<LegacyAdminRedirect />} />
       </Routes>
     </BrowserRouter>
   );

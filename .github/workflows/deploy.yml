@@ -109,6 +109,6 @@ jobs:
           curl --fail --silent --show-error --retry 3 --max-time 10 \
             "$SITE_URL/api/payments/health" -o "$RUNNER_TEMP/payments-health.json"
           node -e 'const h = require(process.argv[1]); if (h.ok !== true) process.exit(1); console.log("Payment service configuration:", h);' "$RUNNER_TEMP/payments-health.json"
-          curl --fail --silent --show-error --max-time 10 "$SITE_URL/admin/payments" \
+          curl --fail --silent --show-error --max-time 10 "$SITE_URL/admin" \
             -o "$RUNNER_TEMP/payments-page.html"
           diff -u dist/index.html "$RUNNER_TEMP/payments-page.html"

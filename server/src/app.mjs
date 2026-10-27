@@ -339,14 +339,14 @@ export function createPaymentApp({
       );
       res.cookie(cookieName, secret, { ...cookieOptions, maxAge: 8 * 3600000 });
       res.clearCookie(stateCookie, cookieOptions);
-      res.redirect(303, `${PUBLIC_SITE_URL}/admin/payments`);
+      res.redirect(303, `${PUBLIC_SITE_URL}/admin`);
     } catch (error) {
       log(
         "google_login_failed",
         error instanceof HttpError ? error.message : "provider_error",
       );
       res.clearCookie(stateCookie, cookieOptions);
-      res.redirect(303, `${PUBLIC_SITE_URL}/admin/payments?error=google_login`);
+      res.redirect(303, `${PUBLIC_SITE_URL}/admin?error=google_login`);
     }
   });
   app.get(`${API_PATH}/admin/session`, admin, (req, res) =>

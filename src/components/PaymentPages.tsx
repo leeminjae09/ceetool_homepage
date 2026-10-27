@@ -762,7 +762,7 @@ export function PaymentAdminPage() {
     }
   }
   return (
-    <Layout title="결제 관리" wide>
+    <Layout title="관리자" wide>
       <ErrorNotice
         error={
           error ||
@@ -795,6 +795,16 @@ export function PaymentAdminPage() {
         </>
       ) : (
         <>
+          <nav aria-label="관리자 메뉴" className="mb-6 border-b border-gray-700">
+            <Link
+              to="/admin"
+              aria-current="page"
+              className="inline-flex min-h-11 items-center border-b-2 border-purple-400 px-4 py-2 font-semibold text-purple-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-400"
+            >
+              결제 관리
+            </Link>
+          </nav>
+          <h2 className="mb-4 text-xl font-semibold">결제 관리</h2>
           <div className="mb-6 flex flex-wrap items-center gap-4 text-sm">
             <span className="break-all text-gray-300">{session.email}</span>
             <button

@@ -59,7 +59,7 @@ export function createMailer(client = new SESv2Client({
       if (row.kind === "failed") details.push("인증이 완료되지 않았다는 알림입니다. 브라우저 신고 또는 반환 결과만으로 실제 청구 실패를 확정하지 않습니다.");
       if (row.kind === "review") details.push("승인·취소 상태를 확정하지 못했습니다. 재결제를 요청하지 말고 거래 내역을 확인해 주세요.");
       if (row.kind === "cancelled") details.push("취소 통지를 수신했습니다. 실제 환불 결과와 일정은 거래 내역을 확인해 주세요.");
-      details.push(`관리자: ${PUBLIC_SITE_URL}/admin/payments`);
+      details.push(`관리자: ${PUBLIC_SITE_URL}/admin`);
       const result = await client.send(new SendEmailCommand({
         FromEmailAddress: EMAIL_ADDRESS,
         Destination: { ToAddresses: [EMAIL_ADDRESS] },
