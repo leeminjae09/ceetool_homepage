@@ -9,15 +9,17 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/index.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/index.mjs && node --check src/app.mjs && node --check src/paysm.mjs && node --check src/database.mjs && node --check src/config.mjs && node --check src/reconcile.mjs && node --check src/email.mjs && node --check deploy/install-nginx.mjs"
+    "check": "node --check src/index.mjs && node --check src/app.mjs && node --check src/homepage.mjs && node --check src/paysm.mjs && node --check src/database.mjs && node --check src/config.mjs && node --check src/reconcile.mjs && node --check src/email.mjs && node --check deploy/install-nginx.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1157.0",
     "@aws-sdk/client-sesv2": "^3.1157.0",
     "ceetool-homepage": "file:..",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "google-auth-library": "^10.3.0",
     "helmet": "^8.1.0",
+    "multer": "^2.0.2",
     "mysql2": "^3.24.6"
   }
 }

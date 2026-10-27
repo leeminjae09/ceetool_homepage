@@ -8,11 +8,13 @@ import ProjectDetails, {
 interface ProjectDialogProps {
   project: ProjectDetailsProps;
   onClose: () => void;
+  initialMediaSrc?: string;
 }
 
 export default function ProjectDialog({
   project,
   onClose,
+  initialMediaSrc,
 }: ProjectDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -90,7 +92,7 @@ export default function ProjectDialog({
         </button>
       </header>
       <div className="min-h-0 overflow-y-auto overscroll-contain px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6">
-        <ProjectDetails {...project} />
+        <ProjectDetails {...project} initialMediaSrc={initialMediaSrc} />
       </div>
     </dialog>,
     document.body,

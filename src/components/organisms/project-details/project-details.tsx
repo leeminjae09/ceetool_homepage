@@ -10,6 +10,7 @@ export interface ProjectDetailsProps {
   description: string;
   media: readonly [ProjectMedia, ...ProjectMedia[]];
   url?: string;
+  initialMediaSrc?: string;
 }
 
 export const ProjectDetails = ({
@@ -17,8 +18,11 @@ export const ProjectDetails = ({
   description,
   media,
   url,
+  initialMediaSrc,
 }: ProjectDetailsProps) => {
-  const [selectedMedia, setSelectedMedia] = useState(media[0]);
+  const [selectedMedia, setSelectedMedia] = useState(
+    () => media.find((item) => item.src === initialMediaSrc) ?? media[0],
+  );
   const [failedSources, setFailedSources] = useState<string[]>([]);
 
   const markFailed = (src: string) => {

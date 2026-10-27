@@ -5,11 +5,16 @@ import {
   Route,
   useLocation,
 } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  defaultHomepageContent,
+  homepageApi,
+  type HomepageContent,
+} from "app/homepage-api";
 import DocumentationPage from "components/ProjectPage";
 import ProjectDialog from "components/ProjectDialog";
-import Card from "components/organisms/card";
-import { additionalProjects, services } from "app/services";
+import ServiceShowcase from "components/ServiceShowcase";
+import { additionalProjects } from "app/services";
 import { portfolioProjects, type PortfolioProjectId } from "app/portfolio";
 import BusinessInfo from "components/BusinessInfo";
 import {
@@ -19,104 +24,144 @@ import {
 } from "components/PaymentPages";
 
 function Home() {
-  const [selectedProject, setSelectedProject] =
-    useState<PortfolioProjectId | null>(null);
+  const [content, setContent] = useState<HomepageContent | null>(null);
+  const [contentError, setContentError] = useState("");
+  const [contentRevision, setContentRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setContentError("");
+    void homepageApi
+      .load()
+      .then((saved) => {
+        if (active) setContent(saved.content ?? defaultHomepageContent);
+      })
+      .catch((error: unknown) => {
+        console.error(
+          "Homepage settings request failed",
+          error instanceof Error ? error.name : "unknown",
+        );
+        if (active)
+          setContentError(
+            "홈페이지 구성을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [contentRevision]);
+  const [selectedProject, setSelectedProject] = useState<{
+    id: PortfolioProjectId;
+    mediaSrc?: string;
+  } | null>(null);
+
+  function openProject(id: PortfolioProjectId, mediaSrc?: string) {
+    setSelectedProject({ id, mediaSrc });
+  }
 
   return (
-    <main>
-      <header className="pt-16 z-10 relative max-w-screen-lg xl:max-w-screen-xl mx-auto">
-        <p className="text-2xl sm:text-4xl leading-none font-bold tracking-tight text-white">
-          <span className="inline-flex items-center gap-2">
-            <span className="text-kakao opacity-75">SOFTWARE</span>
-            <span className="text-purple-200 ml-1">DEVELOPER</span>
-          </span>
-        </p>
-        <h1 className="text-6xl lg:text-7xl leading-none font-extrabold tracking-tight mb-8 sm:mb-10 text-purple-400">
-          CEETOOL
-        </h1>
-        <p className="mb-4 text-2xl font-semibold leading-snug text-white sm:text-3xl">
-          매출과 운영에 필요한 기능을 만듭니다.
-        </p>
-        <p className="max-w-screen-lg text-lg sm:text-xl text-gray-300 font-medium mb-10 sm:mb-11 leading-relaxed">
-          <span className="text-blue-500 font-bold">15년 경력</span>의 백엔드
-          개발자와{" "}
-          <span className="text-blue-500 font-bold">숙련된 프론트엔드 팀</span>
-          이 <span className="text-blue-500 font-bold">쇼핑몰·결제 시스템</span>
-          을 중심으로 AI·마케팅 연동, 업무 자동화, 금융·공공기관 시스템을
-          개발합니다.
-        </p>
-        <div className="absolute top-16 right-2 sm:top-12 sm:right-12 opacity-30 sm:opacity-50">
-          <img
-            src="/logos/ceetool.logo.png"
-            alt="씨툴 CEETOOL 로고"
-            width={1024}
-            height={1024}
-            className="w-20 h-20 sm:w-40 sm:h-40 object-contain"
-          />
-        </div>
-      </header>
-      <section
-        aria-label="문의"
-        className="max-w-screen-lg xl:max-w-screen-xl mx-auto my-6"
-      >
-        <div className="sm:flex items-center">
-          <a
-            href="https://pf.kakao.com/_lDexan"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="카카오톡으로 문의하기: johnlee4 (새 창)"
-            className="bg-kakao text-black px-6 py-3 rounded-lg font-bold flex items-center space-x-3"
+    <main className="portfolio-home">
+      <div className="mx-auto max-w-screen-xl">
+        <header className="flex flex-wrap items-center justify-between gap-6 py-8 sm:py-12">
+          <div>
+            <p className="mb-2 text-[10px] font-semibold tracking-[0.2em] sm:text-xs">
+              <span className="text-kakao/80">SOFTWARE</span>{" "}
+              <span className="text-purple-200">DEVELOPER</span>
+            </p>
+            <h1 className="flex items-center gap-3 text-4xl font-extrabold tracking-tight text-purple-400 sm:text-5xl">
+              <img
+                src="/logos/ceetool.logo.png"
+                alt=""
+                width={1024}
+                height={1024}
+                className="h-12 w-12 shrink-0 object-contain sm:h-16 sm:w-16"
+              />
+              <span>CEETOOL</span>
+            </h1>
+          </div>
+          <nav
+            aria-label="홈페이지 메뉴"
+            className="flex flex-wrap items-center gap-2 sm:gap-5"
           >
-            <img src="/logos/kakao-logo.png" alt="" className="w-5 h-5" />
-            <span>johnlee4</span>
-          </a>
-        </div>
-      </section>
-      <section
-        aria-label="개발 서비스 및 프로젝트"
-        className="max-w-screen-lg xl:max-w-screen-xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4"
-      >
-        {services.map((service) => (
-          <Card
-            key={service.title}
-            {...service}
-            onProjectSelect={setSelectedProject}
+            <a
+              href="https://pf.kakao.com/_lDexan"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="카카오톡으로 문의하기: johnlee4 (새 창)"
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-kakao px-4 py-3 text-sm font-bold text-black hover:bg-yellow-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-kakao"
+            >
+              <img src="/logos/kakao-logo.png" alt="" className="w-5 h-5" />
+              <span>카카오톡 문의</span>
+            </a>
+          </nav>
+          <p className="basis-full text-base font-medium leading-relaxed text-gray-300 sm:text-lg">
+            <span className="font-bold text-blue-500">15년 경력</span>의 백엔드
+            개발자와{" "}
+            <span className="font-bold text-blue-500">
+              숙련된 프론트엔드 팀
+            </span>
+            이{" "}
+            <span className="font-bold text-blue-500">쇼핑몰·결제 시스템</span>
+            을 중심으로 AI·마케팅 연동, 업무 자동화, 금융·공공기관 시스템을
+            개발합니다.
+          </p>
+        </header>
+        {contentError && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-red-400/40 bg-gray-900 p-4 text-sm text-red-200"
+          >
+            <p>{contentError}</p>
+            <button
+              type="button"
+              className="mt-2 min-h-11 text-blue-300 underline"
+              onClick={() => setContentRevision((value) => value + 1)}
+            >
+              다시 시도
+            </button>
+          </div>
+        )}
+        {!content && !contentError && (
+          <p role="status" className="py-8 text-gray-400">
+            홈페이지를 불러오는 중입니다.
+          </p>
+        )}
+        {content && (
+          <ServiceShowcase
+            content={content}
+            dialogOpen={selectedProject !== null}
+            onProjectSelect={openProject}
           />
-        ))}
-      </section>
-      <section className="max-w-screen-lg xl:max-w-screen-xl mx-auto space-y-6">
-        <details className="rounded-xl border border-gray-700 bg-gray-800/60 p-5 sm:p-6">
-          <summary className="cursor-pointer font-semibold text-gray-300 hover:text-white">
-            블록체인 개발 이력 ({additionalProjects.length})
-          </summary>
-          <ul className="mt-4 grid gap-4 text-sm leading-relaxed text-gray-400 sm:grid-cols-2">
-            {additionalProjects.map((project) => (
-              <li key={project.name}>
-                <span className="font-medium text-gray-200">
-                  {project.name}
-                </span>
-                <span className="mt-1 block">{project.description}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-        <p className="text-center text-sm leading-relaxed text-gray-400">
-          접근 권한·개인정보 보호·백업을 고려한 개발.
-          <br />
-          신규 구축뿐 아니라 기존 서비스의 기능 추가·오류 수정도 가능합니다.
-        </p>
-      </section>
-      <BusinessInfo
-        showAdminLink
-        className="pb-16 max-w-screen-lg xl:max-w-screen-xl mx-auto text-center text-gray-400 font-bold text-sm leading-relaxed space-y-1"
-      />
-      {selectedProject && (
-        <ProjectDialog
-          key={selectedProject}
-          project={portfolioProjects[selectedProject]}
-          onClose={() => setSelectedProject(null)}
+        )}
+        <section aria-label="추가 수행 이력" className="pb-10">
+          <details className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+            <summary className="cursor-pointer font-semibold text-gray-300 hover:text-white">
+              추가 수행 이력 ({additionalProjects.length})
+            </summary>
+            <ul className="mt-4 grid gap-4 text-sm leading-relaxed text-gray-400 sm:grid-cols-2">
+              {additionalProjects.map((project) => (
+                <li key={project.name}>
+                  <span className="font-medium text-gray-200">
+                    {project.name}
+                  </span>
+                  <span className="mt-1 block">{project.description}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+        <BusinessInfo
+          showAdminLink
+          className="space-y-1 border-t border-gray-800 py-8 text-center text-xs leading-relaxed text-gray-400"
         />
-      )}
+        {selectedProject && (
+          <ProjectDialog
+            key={`${selectedProject.id}:${selectedProject.mediaSrc || ""}`}
+            project={portfolioProjects[selectedProject.id]}
+            initialMediaSrc={selectedProject.mediaSrc}
+            onClose={() => setSelectedProject(null)}
+          />
+        )}
+      </div>
     </main>
   );
 }

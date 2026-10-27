@@ -45,11 +45,15 @@ export interface EmailStatus {
   lastSentAt: number | null;
 }
 function isEmailStatus(value: unknown): value is EmailStatus {
-  return record(value) &&
-    [value.pending, value.sent, value.failed].every((count) =>
-      typeof count === "number" && Number.isSafeInteger(count) && count >= 0) &&
+  return (
+    record(value) &&
+    [value.pending, value.sent, value.failed].every(
+      (count) =>
+        typeof count === "number" && Number.isSafeInteger(count) && count >= 0,
+    ) &&
     nullableString(value.lastError) &&
-    (value.lastSentAt === null || typeof value.lastSentAt === "number");
+    (value.lastSentAt === null || typeof value.lastSentAt === "number")
+  );
 }
 export interface NewInvoice {
   title: string;
@@ -109,13 +113,18 @@ function invalidResponse(): never {
     "결제 서버의 응답을 확인할 수 없습니다. 담당자에게 문의해 주세요.",
   );
 }
-async function request(path: string, options?: RequestInit): Promise<unknown> {
+export async function request(
+  path: string,
+  options?: RequestInit,
+): Promise<unknown> {
   const response = await fetch(`${base}${path}`, {
     ...options,
     credentials: "same-origin",
     cache: "no-store",
     headers: {
-      ...(options?.body ? { "Content-Type": "application/json" } : {}),
+      ...(options?.body && !(options.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...options?.headers,
     },
   });
@@ -139,17 +148,29 @@ async function request(path: string, options?: RequestInit): Promise<unknown> {
 
 export const paymentApi = {
   async visit(token: string): Promise<void> {
-    await request(`/invoices/${encodeURIComponent(token)}/visit`, { method: "POST" });
+    await request(`/invoices/${encodeURIComponent(token)}/visit`, {
+      method: "POST",
+    });
   },
   async incomplete(attempt: string, result: "FAIL" | "CANCEL"): Promise<void> {
     await request(`/attempts/${encodeURIComponent(attempt)}/failure`, {
-      method: "POST", body: JSON.stringify({ result }),
+      method: "POST",
+      body: JSON.stringify({ result }),
     });
   },
-  async emailStatus(action?: "test" | "retry", csrf?: string): Promise<EmailStatus> {
-    const value = await request(`/admin/emails${action ? `/${action}` : ""}`, action ? {
-      method: "POST", headers: { "X-CSRF-Token": csrf || "" },
-    } : undefined);
+  async emailStatus(
+    action?: "test" | "retry",
+    csrf?: string,
+  ): Promise<EmailStatus> {
+    const value = await request(
+      `/admin/emails${action ? `/${action}` : ""}`,
+      action
+        ? {
+            method: "POST",
+            headers: { "X-CSRF-Token": csrf || "" },
+          }
+        : undefined,
+    );
     if (!isEmailStatus(value)) return invalidResponse();
     return value;
   },

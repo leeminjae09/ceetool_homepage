@@ -41,4 +41,15 @@
     -webkit-animation: slide 2s linear infinite;
     animation: slide 4s linear infinite;
   }
+
+  main.portfolio-home {
+    @apply space-y-0 px-4 sm:px-6 lg:px-8;
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .service-showcase .swiper-wrapper {
+    transition-duration: 0ms !important;
+  }
 }

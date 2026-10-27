@@ -13,6 +13,7 @@ import {
 } from "./config.mjs";
 import { digest, invoiceView, token } from "./database.mjs";
 import { emailStatus, queueEmail, queueManualTest } from "./email.mjs";
+import { mountHomepage, HomepageError } from "./homepage.mjs";
 import {
   createPaysm,
   ediDate,
@@ -102,6 +103,7 @@ export function createPaymentApp({
   provider = createPaysm(config),
   google = googleClient(config),
   logger = console,
+  uploadMedia,
 }) {
   const app = express();
   app.disable("x-powered-by");
@@ -209,6 +211,7 @@ export function createPaymentApp({
       "결제 서비스가 아직 설정되지 않았습니다. 담당자에게 문의해 주세요.",
     );
   }
+  mountHomepage(app, { db, admin, csrf, sameOrigin, logger, uploadMedia });
   const emailLimit = rateLimit({
     windowMs: 3600000,
     limit: 6,
@@ -954,7 +957,7 @@ export function createPaymentApp({
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     const status =
-      error instanceof HttpError
+      error instanceof HttpError || error instanceof HomepageError
         ? error.status
         : error.type === "entity.too.large"
           ? 413
@@ -963,11 +966,13 @@ export function createPaymentApp({
             : 500;
     log(
       "payment_api_error",
-      error instanceof HttpError ? error.message : error.type || error.name,
+      error instanceof HttpError || error instanceof HomepageError
+        ? error.message
+        : error.type || error.name,
     );
     res.status(status).json({
       error:
-        error instanceof HttpError
+        error instanceof HttpError || error instanceof HomepageError
           ? error.message
           : status === 400
             ? "요청 형식이 올바르지 않습니다."

@@ -193,6 +193,103 @@ async function fixture(t, options = {}) {
   };
 }
 
+test("homepage settings persist through real MySQL with authenticated writes and conflict protection", async (t) => {
+  const f = await fixture(t);
+  const admin = await f.login();
+  const content = {
+    categories: [
+      {
+        id: "payment",
+        title: "결제 시스템",
+        tagline: "결제 연동",
+        icon: "payment",
+        visible: true,
+        featured: false,
+        features: ["카드·해외 결제"],
+        slides: [
+          {
+            label: "카드 결제",
+            project: {
+              name: "C9Pro",
+              description: "카드·USDT·PayPal·멤버십 연동",
+              url: "https://c9-pro.com/",
+            },
+          },
+          {
+            label: "플러그인",
+            project: {
+              name: "ForYouPay",
+              description: "우커머스 통합결제 플러그인",
+            },
+          },
+        ],
+      },
+    ],
+  };
+  assert.equal((await f.api("/admin/homepage")).status, 401);
+  assert.equal(
+    (
+      await f.api("/admin/homepage", {
+        method: "PUT",
+        cookie: admin.cookie,
+        body: { content, revision: null },
+      })
+    ).status,
+    403,
+  );
+  const saved = await f.api("/admin/homepage", {
+    method: "PUT",
+    ...admin,
+    body: { content, revision: null },
+  });
+  assert.equal(saved.status, 200);
+  assert.deepEqual((await f.api("/homepage")).data.content, content);
+  assert.deepEqual(
+    JSON.parse(
+      (
+        await f.db.get(
+          "SELECT value FROM settings WHERE setting_key = 'homepage_v1'",
+        )
+      ).value,
+    ),
+    saved.data,
+  );
+  const concurrent = await Promise.all([
+    f.api("/admin/homepage", {
+      method: "PUT",
+      ...admin,
+      body: { content, revision: saved.data.revision },
+    }),
+    f.api("/admin/homepage", {
+      method: "PUT",
+      ...admin,
+      body: { content, revision: saved.data.revision },
+    }),
+  ]);
+  assert.deepEqual(
+    concurrent.map((result) => result.status).sort(),
+    [200, 409],
+  );
+  const latest = (await f.api("/admin/homepage", admin)).data;
+  const hidden = structuredClone(content);
+  hidden.categories[0].visible = false;
+  assert.equal(
+    (
+      await f.api("/admin/homepage", {
+        method: "PUT",
+        ...admin,
+        body: { content: hidden, revision: latest.revision },
+      })
+    ).status,
+    200,
+  );
+  assert.deepEqual((await f.api("/homepage")).data.content.categories, []);
+  assert.equal(
+    (await f.api("/admin/homepage", admin)).data.content.categories.length,
+    1,
+  );
+});
+
 test("visit emails use a hashed browser cookie and an atomic exact 30-minute per-link throttle", async (t) => {
   let now = Date.now();
   t.mock.method(Date, "now", () => now);

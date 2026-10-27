@@ -10,11 +10,13 @@ import {
   MegaphoneIcon,
 } from "@heroicons/react/24/outline";
 import type { PortfolioProjectId } from "app/portfolio";
+import type { ProjectDetailsProps } from "components/organisms/project-details/project-details";
 
 export interface ServiceProject {
   name: string;
   description: string;
   portfolioId?: PortfolioProjectId;
+  url?: string;
 }
 
 interface LegacyService {
@@ -123,21 +125,49 @@ export const legacyServices = [
 
 export interface Service {
   title: string;
+  tagline: string;
   description: string;
+  showcase: readonly [
+    {
+      label: string;
+      project: ServiceProject;
+      media?: ProjectDetailsProps["media"][number];
+    },
+    {
+      label: string;
+      project: ServiceProject;
+      media?: ProjectDetailsProps["media"][number];
+    },
+  ];
   Icon: LegacyService["Icon"];
   features: readonly string[];
   projects: readonly ServiceProject[];
   featured?: boolean;
-  projectLabel?: string;
 }
 
 const [web, payments, blockchain, api, data, automation] = legacyServices;
 
-export const additionalProjects = blockchain.projects;
+const aiChatbot = {
+  name: "AI 챗봇 연동",
+  description: "AI를 활용한 챗봇 연동 개발",
+};
+const marketingIntegration = {
+  name: "메타·인스타그램 마케팅",
+  description: "SNS 마케팅 관련 기능 개발",
+};
+const bankIntegration = {
+  name: "은행 API 연동",
+  description: "은행 연동 관련 업무 개발",
+};
 
 export const services: readonly Service[] = [
   {
-    title: "쇼핑몰 구축·커스터마이징",
+    title: "쇼핑몰·웹사이트",
+    tagline: "브랜드와 서비스에 맞는 웹사이트",
+    showcase: [
+      { label: "메인 화면", project: web.projects[0] },
+      { label: "상품·서비스 상세 화면", project: web.projects[0] },
+    ],
     description:
       "자사몰 제작부터 카페24·WooCommerce 기능 추가, 주문·재고·배송 연동까지.",
     Icon: ShoppingBagIcon,
@@ -150,7 +180,12 @@ export const services: readonly Service[] = [
     projects: [web.projects[0]],
   },
   {
-    title: "결제 시스템 연동",
+    title: "결제 시스템",
+    tagline: "결제부터 취소·정산까지",
+    showcase: [
+      { label: "고객 결제 화면", project: payments.projects[0] },
+      { label: "결제 내역·관리 화면", project: payments.projects[1] },
+    ],
     description:
       "새로운 결제 수단을 연결하고 승인·취소·환불 흐름을 구현합니다.",
     Icon: CreditCardIcon,
@@ -168,7 +203,12 @@ export const services: readonly Service[] = [
     ],
   },
   {
-    title: "AI 연동·상담 챗봇",
+    title: "AI·챗봇",
+    tagline: "서비스에 필요한 AI 기능",
+    showcase: [
+      { label: "챗봇 대화 화면", project: aiChatbot },
+      { label: "AI 처리 결과 화면", project: aiChatbot },
+    ],
     description:
       "기존 서비스에 AI를 연결해 상담과 문서 처리에 필요한 기능을 만듭니다.",
     Icon: ChatBubbleLeftRightIcon,
@@ -177,13 +217,15 @@ export const services: readonly Service[] = [
       "내부 문서 검색·답변",
       "문서 요약·분류 자동화",
     ],
-    projectLabel: "수행 분야",
-    projects: [
-      { name: "AI 챗봇 연동", description: "AI를 활용한 챗봇 연동 개발" },
-    ],
+    projects: [aiChatbot],
   },
   {
-    title: "마케팅·SNS 연동 개발",
+    title: "마케팅·SNS",
+    tagline: "채널과 데이터를 연결하는 기능",
+    showcase: [
+      { label: "SNS 연동·운영 화면", project: marketingIntegration },
+      { label: "성과·통계 화면", project: marketingIntegration },
+    ],
     description:
       "메타·인스타그램과 서비스를 연결해 채널 운영과 성과 확인을 돕습니다.",
     Icon: MegaphoneIcon,
@@ -192,16 +234,15 @@ export const services: readonly Service[] = [
       "SNS 콘텐츠·고객 문의 연동",
       "마케팅 데이터·보고서",
     ],
-    projectLabel: "수행 분야",
-    projects: [
-      {
-        name: "메타·인스타그램 마케팅",
-        description: "SNS 마케팅 관련 기능 개발",
-      },
-    ],
+    projects: [marketingIntegration],
   },
   {
-    title: "업무 자동화·맞춤 시스템",
+    title: "업무 자동화·관리 시스템",
+    tagline: "반복 업무를 줄이는 맞춤 도구",
+    showcase: [
+      { label: "업무 관리 화면", project: web.projects[1] },
+      { label: "자동화 실행·결과 화면", project: automation.projects[0] },
+    ],
     description:
       "예약·정산부터 반복 작업까지, 실제 업무 방식에 맞는 화면과 도구를 만듭니다.",
     Icon: Cog6ToothIcon,
@@ -224,7 +265,12 @@ export const services: readonly Service[] = [
     ],
   },
   {
-    title: "금융·공공 시스템 개발",
+    title: "금융·공공 시스템",
+    tagline: "복잡한 데이터와 시스템 연결",
+    showcase: [
+      { label: "업무·API 연동 화면", project: bankIntegration },
+      { label: "거래·데이터 조회 화면", project: web.projects[5] },
+    ],
     description:
       "은행·금융 API와 기관 업무 시스템을 연결하고 거래·업무 데이터를 처리합니다.",
     Icon: ServerStackIcon,
@@ -234,7 +280,7 @@ export const services: readonly Service[] = [
       "거래 데이터 수집·시스템 통합",
     ],
     projects: [
-      { name: "은행 API 연동", description: "은행 연동 관련 업무 개발" },
+      bankIntegration,
       web.projects[5],
       web.projects[4],
       payments.projects[2],
@@ -243,4 +289,9 @@ export const services: readonly Service[] = [
       ...data.projects,
     ],
   },
+];
+
+export const additionalProjects: readonly ServiceProject[] = [
+  ...services.flatMap((service) => service.projects.slice(2)),
+  ...blockchain.projects,
 ];
