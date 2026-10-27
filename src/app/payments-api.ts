@@ -37,6 +37,20 @@ export interface Checkout {
   action: string;
   fields: Record<string, string>;
 }
+export interface EmailStatus {
+  pending: number;
+  sent: number;
+  failed: number;
+  lastError: string | null;
+  lastSentAt: number | null;
+}
+function isEmailStatus(value: unknown): value is EmailStatus {
+  return record(value) &&
+    [value.pending, value.sent, value.failed].every((count) =>
+      typeof count === "number" && Number.isSafeInteger(count) && count >= 0) &&
+    nullableString(value.lastError) &&
+    (value.lastSentAt === null || typeof value.lastSentAt === "number");
+}
 export interface NewInvoice {
   title: string;
   amount: number;
@@ -124,6 +138,21 @@ async function request(path: string, options?: RequestInit): Promise<unknown> {
 }
 
 export const paymentApi = {
+  async visit(token: string): Promise<void> {
+    await request(`/invoices/${encodeURIComponent(token)}/visit`, { method: "POST" });
+  },
+  async incomplete(attempt: string, result: "FAIL" | "CANCEL"): Promise<void> {
+    await request(`/attempts/${encodeURIComponent(attempt)}/failure`, {
+      method: "POST", body: JSON.stringify({ result }),
+    });
+  },
+  async emailStatus(action?: "test" | "retry", csrf?: string): Promise<EmailStatus> {
+    const value = await request(`/admin/emails${action ? `/${action}` : ""}`, action ? {
+      method: "POST", headers: { "X-CSRF-Token": csrf || "" },
+    } : undefined);
+    if (!isEmailStatus(value)) return invalidResponse();
+    return value;
+  },
   async invoice(token: string): Promise<PublicInvoice> {
     const value = await request(`/invoices/${encodeURIComponent(token)}`);
     if (

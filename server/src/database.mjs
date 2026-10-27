@@ -51,6 +51,47 @@ export function openDatabase(path) {
       invoice_token TEXT NOT NULL REFERENCES invoices(token),
       result_code TEXT NOT NULL, amount TEXT NOT NULL, received_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS email_outbox (
+      id INTEGER PRIMARY KEY,
+      event_key TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','sending','sent','failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_at INTEGER NOT NULL,
+      lease_until INTEGER,
+      message_id TEXT,
+      sent_at INTEGER,
+      last_error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS email_outbox_pending ON email_outbox(status, next_at);
+    CREATE TABLE IF NOT EXISTS payment_visits (
+      invoice_token TEXT NOT NULL REFERENCES invoices(token),
+      visitor_hash TEXT NOT NULL,
+      notified_at INTEGER NOT NULL,
+      PRIMARY KEY (invoice_token, visitor_hash)
+    );
+    CREATE TRIGGER IF NOT EXISTS payment_status_email
+    AFTER UPDATE OF state, noti_code ON invoices
+    WHEN NEW.state IN ('paid','review') AND
+      (OLD.state != NEW.state OR
+        (NEW.state = 'review' AND OLD.noti_code IS NOT NEW.noti_code))
+    BEGIN
+      INSERT OR IGNORE INTO email_outbox
+        (event_key, kind, payload, created_at, next_at)
+      VALUES (
+        (CASE WHEN NEW.state = 'paid' THEN 'paid'
+          WHEN NEW.noti_code = '2001' THEN 'cancelled' ELSE 'review' END)
+          || ':' || NEW.token || ':' || COALESCE(NEW.tid, ''),
+        CASE WHEN NEW.state = 'paid' THEN 'paid'
+          WHEN NEW.noti_code = '2001' THEN 'cancelled' ELSE 'review' END,
+        json_object('orderNo', NEW.order_no, 'title', NEW.title, 'amount', NEW.amount),
+        CAST(unixepoch('subsec') * 1000 AS INTEGER),
+        CAST(unixepoch('subsec') * 1000 AS INTEGER)
+      );
+    END;
   `);
   return db;
 }
@@ -99,6 +140,8 @@ export function purgePersonalData(db, now = Date.now()) {
   ).run(now - 30 * 86400000, fiveYearsAgo.getTime());
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now);
   db.prepare("DELETE FROM oauth_states WHERE expires_at <= ?").run(now);
+  db.prepare("DELETE FROM payment_visits WHERE notified_at < ?").run(now - 30 * 86400000);
+  db.prepare("UPDATE email_outbox SET payload = '{}' WHERE status = 'sent' AND sent_at < ? AND payload != '{}'").run(now - 30 * 86400000);
 }
 
 export function recoverInterruptedApprovals(db) {

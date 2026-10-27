@@ -12,6 +12,7 @@ import {
   paymentReady,
 } from "./config.mjs";
 import { digest, invoiceView, token } from "./database.mjs";
+import { emailStatus, queueEmail, queueManualTest } from "./email.mjs";
 import {
   createPaysm,
   ediDate,
@@ -212,6 +213,58 @@ export function createPaymentApp({
       "결제 서비스가 아직 설정되지 않았습니다. 담당자에게 문의해 주세요.",
     );
   }
+  const emailLimit = rateLimit({
+    windowMs: 3600000, limit: 6, standardHeaders: "draft-8", legacyHeaders: false,
+    message: { error: "메일 작업 요청이 많습니다. 잠시 후 다시 시도해 주세요." },
+  });
+  app.get(`${API_PATH}/admin/emails`, admin, (req, res) => res.json(emailStatus(db)));
+  app.post(`${API_PATH}/admin/emails/test`, sameOrigin, admin, csrf, emailLimit, (req, res) => {
+    queueManualTest(db);
+    res.status(202).json(emailStatus(db));
+  });
+  app.post(`${API_PATH}/admin/emails/retry`, sameOrigin, admin, csrf, emailLimit, (req, res) => {
+    db.prepare(`UPDATE email_outbox SET status = 'pending', attempts = 0, next_at = ?,
+      last_error = NULL WHERE status IN ('failed','pending') AND last_error IS NOT NULL`).run(Date.now());
+    res.status(202).json(emailStatus(db));
+  });
+  app.post(`${API_PATH}/invoices/:token/visit`, sameOrigin, (req, res) => {
+    const invoice = getInvoice(req.params.token);
+    const name = config.production ? "__Host-ceetool_visitor" : "ceetool_visitor";
+    let visitor = cookieValue(req, name);
+    if (!validToken(visitor)) {
+      visitor = token();
+      res.cookie(name, visitor, { ...cookieOptions, maxAge: 30 * 86400000 });
+    }
+    const now = Date.now();
+    transaction(db, () => {
+      const changed = db.prepare(`INSERT INTO payment_visits VALUES (?, ?, ?)
+        ON CONFLICT(invoice_token, visitor_hash) DO UPDATE SET notified_at = excluded.notified_at
+        WHERE payment_visits.notified_at <= excluded.notified_at - 1800000`)
+        .run(invoice.token, digest(visitor), now);
+      if (changed.changes)
+        queueEmail(db, `visit:${token()}`, "visit", invoice, now);
+    });
+    res.status(204).end();
+  });
+  function incompleteAttempt(attempt) {
+    transaction(db, () => {
+      const invoice = getInvoice(attempt.invoice_token);
+      const changed = db.prepare(`UPDATE attempts SET state = 'closed'
+        WHERE token = ? AND state = 'prepared' AND created_at > ?`)
+        .run(attempt.token, Date.now() - 15 * 60000);
+      if (changed.changes && invoice.state === "pending") {
+        db.prepare("UPDATE invoices SET note = ? WHERE token = ? AND state = 'pending'")
+          .run("결제 인증이 취소되었거나 완료되지 않았습니다.", invoice.token);
+        queueEmail(db, `auth:${attempt.token}`, "failed", invoice);
+      }
+    });
+  }
+  app.post(`${API_PATH}/attempts/:attempt/failure`, sameOrigin, (req, res) => {
+    requireValue(object(req.body) && ["FAIL", "CANCEL"].includes(req.body.result),
+      400, "결제 인증 결과를 확인해 주세요.");
+    incompleteAttempt(getAttempt(req.params.attempt));
+    res.status(204).end();
+  });
 
   app.get(`${API_PATH}/health`, (req, res) => {
     db.prepare("SELECT 1").get();
@@ -662,21 +715,17 @@ export function createPaymentApp({
           400,
           "결제 인증 결과가 올바르지 않습니다.",
         );
-        db.prepare(
-          "UPDATE attempts SET state = 'closed' WHERE token = ? AND state = 'prepared'",
-        ).run(attempt.token);
-        db.prepare(
-          "UPDATE invoices SET note = ? WHERE token = ? AND state = 'pending'",
-        ).run(
-          "결제 인증이 취소되었거나 완료되지 않았습니다.",
-          attempt.invoice_token,
-        );
+        incompleteAttempt(attempt);
       }
     } catch (error) {
       log(
         "payment_return_rejected",
         error instanceof HttpError ? error.message : "internal_error",
       );
+      const current = getInvoice(attempt.invoice_token);
+      if (current.state === "pending" && getAttempt(attempt.token).state === "prepared" &&
+          Date.now() - attempt.created_at < 15 * 60000)
+        queueEmail(db, `auth:${attempt.token}`, "failed", current);
       db.prepare(
         "UPDATE invoices SET note = ? WHERE token = ? AND state = 'pending'",
       ).run(

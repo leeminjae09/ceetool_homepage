@@ -1,5 +1,6 @@
 import { createPaymentApp } from "./app.mjs";
 import { loadConfig, googleReady, paymentReady } from "./config.mjs";
+import { createEmailWorker, createMailer, queueConnectionTest } from "./email.mjs";
 import {
   openDatabase,
   purgePersonalData,
@@ -12,6 +13,16 @@ purgePersonalData(db);
 const retentionTimer = setInterval(() => purgePersonalData(db), 3600000);
 retentionTimer.unref();
 recoverInterruptedApprovals(db);
+queueConnectionTest(db);
+const emailWorker = createEmailWorker(db, createMailer());
+const flushEmails = () => {
+  emailWorker.run().catch((error) =>
+    console.error(JSON.stringify({ event: "payment_email_worker_error", reason: error.name })),
+  );
+};
+const emailTimer = setInterval(flushEmails, 5000);
+emailTimer.unref();
+flushEmails();
 if (!paymentReady(config) || !googleReady(config)) {
   console.error(
     "Payment server configuration is incomplete; unconfigured operations return HTTP 503.",
@@ -29,7 +40,10 @@ function shutdown() {
   if (stopping) return;
   stopping = true;
   clearInterval(retentionTimer);
-  server.close(() => {
+  clearInterval(emailTimer);
+  const emailStopped = emailWorker.stop();
+  server.close(async () => {
+    await emailStopped;
     db.close();
     process.exit(0);
   });

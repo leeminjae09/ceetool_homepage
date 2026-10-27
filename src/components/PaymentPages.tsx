@@ -19,6 +19,7 @@ import {
   type AdminInvoice,
   type AdminSession,
   type Checkout,
+  type EmailStatus,
   type Invoice,
   type PaymentState,
   type PublicInvoice,
@@ -133,18 +134,26 @@ function PaymentFrame({
   onClose,
   onApproval,
   onError,
+  onIncomplete,
 }: {
   checkout: Checkout;
   busy: boolean;
   onClose: () => void;
   onApproval: (auth: Record<string, string>) => void;
   onError: (error: string) => void;
+  onIncomplete: (result: "FAIL" | "CANCEL") => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const submitted = useRef(false);
   const handling = useRef(false);
+  const cancel = () => {
+    if (busy || handling.current) return;
+    handling.current = true;
+    onIncomplete("CANCEL");
+    onClose();
+  };
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -177,6 +186,8 @@ function PaymentFrame({
       if (result === "SUCCESS") {
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           onError("결제 인증 응답이 올바르지 않습니다.");
+          handling.current = true;
+          onIncomplete("FAIL");
           onClose();
           return;
         }
@@ -191,6 +202,8 @@ function PaymentFrame({
         ]) {
           if (!(key in payload) || typeof payload[key] !== "string") {
             onError("결제 인증 정보를 확인하지 못했습니다.");
+            handling.current = true;
+            onIncomplete("FAIL");
             onClose();
             return;
           }
@@ -201,6 +214,8 @@ function PaymentFrame({
         handling.current = true;
         onApproval(auth);
       } else if (result === "FAIL" || result === "CANCEL") {
+        handling.current = true;
+        onIncomplete(result);
         onError(
           result === "FAIL"
             ? "결제 인증을 완료하지 못했습니다."
@@ -211,7 +226,7 @@ function PaymentFrame({
     };
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
-  }, [checkout, onApproval, onClose, onError]);
+  }, [checkout, onApproval, onClose, onError, onIncomplete]);
   return (
     <dialog
       ref={dialogRef}
@@ -219,7 +234,7 @@ function PaymentFrame({
       aria-modal="true"
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) onClose();
+        cancel();
       }}
       onClose={(event) => {
         if (!event.currentTarget.open && !busy) onClose();
@@ -234,7 +249,7 @@ function PaymentFrame({
           type="button"
           autoFocus
           disabled={busy}
-          onClick={onClose}
+          onClick={cancel}
           className="rounded px-3 py-2 disabled:opacity-40"
           aria-label="결제창 닫기"
         >
@@ -272,7 +287,21 @@ function CustomerPayment({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [checkout, setCheckout] = useState<Checkout | null>(null);
+  const visited = useRef(false);
+  useEffect(() => {
+    if (!invoice || visited.current) return;
+    visited.current = true;
+    void paymentApi.visit(token).catch((err: unknown) =>
+      console.error("Payment visit notification failed", message(err)),
+    );
+  }, [invoice, token]);
   const close = useCallback(() => setCheckout(null), []);
+  const incomplete = useCallback((result: "FAIL" | "CANCEL") => {
+    if (!checkout) return;
+    void paymentApi.incomplete(checkout.attemptToken, result).catch((err: unknown) =>
+      setError(message(err)),
+    );
+  }, [checkout]);
   const approve = useCallback(
     async (auth: Record<string, string>) => {
       if (!checkout) return;
@@ -338,6 +367,9 @@ function CustomerPayment({ token }: { token: string }) {
       {invoice && (
         <>
           <Summary invoice={invoice} />
+          <p className="mb-4 text-xs leading-relaxed text-gray-400">
+            접속 알림의 중복 방지를 위해 무작위 브라우저 식별 쿠키를 최대 30일 사용합니다.
+          </p>
           {invoice.state !== "pending" ? (
             <>
               <p className="my-4 text-gray-300">
@@ -436,6 +468,7 @@ function CustomerPayment({ token }: { token: string }) {
           onClose={close}
           onApproval={(auth) => void approve(auth)}
           onError={setError}
+          onIncomplete={incomplete}
         />
       )}
     </Layout>
@@ -494,6 +527,50 @@ function localDateInput(value: number) {
     .toISOString()
     .slice(0, 16);
 }
+function EmailNotifications({ csrf }: { csrf: string }) {
+  const [status, setStatus] = useState<EmailStatus | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    let active = true;
+    void paymentApi.emailStatus().then((value) => {
+      if (active) setStatus(value);
+    }).catch((err: unknown) => { if (active) setError(message(err)); });
+    return () => { active = false; };
+  }, []);
+  async function update(action?: "test" | "retry") {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      setStatus(await paymentApi.emailStatus(action, csrf));
+      if (action) setNotice("발송 대기열에 등록했습니다. 잠시 후 상태를 새로고침해 주세요.");
+    } catch (err) {
+      setError(message(err));
+    } finally { setBusy(false); }
+  }
+  return (
+    <details className="mb-6 rounded-xl border border-gray-700 p-4 text-sm">
+      <summary className="cursor-pointer font-semibold">관리자 메일 알림</summary>
+      <p className="mt-3 break-all text-gray-300">발신·수신: john@ceetool.com · 서울 리전</p>
+      <p className="mt-2 text-gray-400">같은 링크·브라우저의 접속 알림은 30분마다 최대 1회 발송합니다.</p>
+      {status && <p className="mt-2">대기 {status.pending} · 발송 접수 {status.sent} · 재시도 소진 {status.failed}</p>}
+      {status?.lastSentAt && <p className="mt-2">마지막 발송 접수: {date(status.lastSentAt)}</p>}
+      {status?.lastError && <p role="alert" className="mt-2 text-amber-300">발송 오류: {status.lastError}. AWS 권한·인증 설정을 확인해 주세요.</p>}
+      <ErrorNotice error={error} />
+      {notice && <p role="status" className="mt-2 text-green-300">{notice}</p>}
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button type="button" className={buttonClass} disabled={busy} onClick={() => void update()}>상태 새로고침</button>
+        <button type="button" className={buttonClass} disabled={busy} onClick={() => void update("test")}>테스트 메일</button>
+        <button type="button" className={buttonClass} disabled={busy} onClick={() => void update("retry")}>오류 메일 재시도</button>
+      </div>
+      <p className="mt-3 text-gray-400">발송 접수는 메일 서비스가 수락했다는 뜻이며, 받은편지함 도착을 보장하지 않습니다.</p>
+    </details>
+  );
+}
+
 export function PaymentAdminPage() {
   const [params] = useSearchParams();
   const [session, setSession] = useState<AdminSession | null>(null);
@@ -737,6 +814,7 @@ export function PaymentAdminPage() {
               내역 새로고침
             </button>
           </div>
+          <EmailNotifications csrf={session.csrfToken} />
           {!session.paymentConfigured && (
             <ErrorNotice error="서버 .env에 실가맹점 MID·Merchant Key를 설정해야 링크를 발급할 수 있습니다." />
           )}

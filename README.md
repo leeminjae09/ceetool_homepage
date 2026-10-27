@@ -113,7 +113,7 @@ npm run lint
 npm run build
 ```
 
-테스트는 가짜 PaySM·Google 응답과 임시 DB를 사용하며 실제 승인이나 과금을 하지 않습니다.
+테스트는 가짜 PaySM·Google·SES 응답과 임시 DB를 사용하며 실제 승인·과금·메일 발송을 하지 않습니다.
 금액 변조·중복/동시 승인·응답 유실·위조 통지·모바일 반환·세션/CSRF·허용 계정·보관/백업을 검사합니다.
 
 ### 결제 결과·통지 처리
@@ -154,6 +154,77 @@ PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
   /home/ubuntu/ceetool-payments/current/runtime/node \
   --env-file=/home/ubuntu/ceetool-payments/.env \
   /home/ubuntu/ceetool-payments/current/server/src/reconcile.mjs
+```
+
+### 관리자 메일 알림 (AWS SES)
+
+서울 리전(`ap-northeast-2`)의 SES로 `john@ceetool.com`에서 같은 주소로 알립니다.
+고객 영수증 메일과 팝빌 세금계산서 자동 발행은 아직 구현하지 않았습니다.
+
+- 고객이 실제 결제 페이지를 열면 접속 알림을 등록합니다. 단순 GET, 결과 화면의 조회·폴링,
+  관리자 조회는 접속 메일을 생성하지 않습니다. 자바스크립트 실행 없는 링크 미리보기도 제외됩니다.
+- 같은 링크·브라우저는 **30분마다 최대 1회**입니다. 무작위 HttpOnly 쿠키는 최대 30일,
+  DB에는 해시만 보관합니다. 쿠키 삭제·시크릿 모드·다른 브라우저는 별도로 인식하며,
+  자바스크립트를 실행하는 봇이나 유효한 링크를 아는 제3자를 사람과 구별하는 기능은 아닙니다.
+- 검증된 승인·서버 통지·영수증 복구는 결제 완료 알림을, 응답 유실·재시작 등은 확인 필요 알림을 생성합니다.
+  취소 통지는 별도로 알리며 환불 완료로 단정하지 않습니다. 최초 설치 전 과거 거래는 소급 발송하지 않습니다.
+- PC 결제창 실패·명시적 닫기 및 모바일 실패 반환은 **인증 실패·미완료**로 알립니다.
+  브라우저 신고는 승인 여부의 근거로 사용하지 않습니다. 탭 강제 종료·통신 단절은 감지하지 못할 수 있습니다.
+- 결제 상태 변경과 메일 등록은 같은 SQLite 트랜잭션에서 처리합니다. SDK 호출은 별도 작업자가 수행하며,
+  SES 지연·오류로 결제 응답을 기다리게 하지 않습니다. 대기열은 재시작에도 유지됩니다.
+- 5초마다 최대 10건을 처리하고, 오류는 1분부터 지수 간격으로 최대 8회 시도합니다.
+  중단된 발송은 1분 임대 만료 후 다시 처리합니다. 실패 소진 건은 버리지 않으며 관리자가 재시도할 수 있습니다.
+  중복 승인·중복 통지는 같은 발송 건으로 통합합니다.
+- SES 수락 직후 서버가 중단되거나 응답을 잃으면 재시도 메일이 중복 도착할 수 있습니다.
+  **발송 접수는 SES 수락이며 받은편지함 도착 보장이 아닙니다.** 반송·스팸 여부는 SES 지표와 수신함에서 확인합니다.
+- 메일에는 주문번호·제목·금액·발생 시각·관리자 주소만 포함합니다.
+  이름·연락처·카드정보·인증 원문·결제 링크 토큰은 포함하지 않습니다.
+  발송된 본문 스냅샷은 30일 후 제거하고 중복 방지 키·발송 결과는 유지합니다.
+  발송 대기·오류 건은 처리할 때까지 보관하며, 만료된 접속 해시는 30일 후 정리합니다.
+
+**AWS에서 필요한 설정**
+
+1. SES **서울**에서 `ceetool.com` 도메인 또는 `john@ceetool.com` 발신 자격을 검증합니다.
+   도메인 인증은 안내된 DKIM DNS 레코드를 등록합니다. Cloudflare의 해당 DNS 레코드는 프록시하지 않습니다.
+2. 결제 서버 EC2에 IAM 역할을 연결하고 아래와 같은 최소 발송 정책을 부여합니다.
+   계정 ID와 인증 방식에 맞게 `Resource`를 설정합니다.
+   SDK 기본 자격 증명 체인을 사용하므로 EC2 역할을 권장하며 AWS 키를 코드·프런트엔드에 넣지 않습니다.
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": "ses:SendEmail",
+       "Resource": "arn:aws:ses:ap-northeast-2:YOUR_ACCOUNT_ID:identity/ceetool.com",
+       "Condition": {
+         "StringEquals": { "ses:FromAddress": "john@ceetool.com" },
+         "ForAllValues:StringEquals": { "ses:Recipients": ["john@ceetool.com"] }
+       }
+     }]
+   }
+   ```
+
+   이메일 주소 자체를 인증했다면 리소스의 `identity/ceetool.com` 대신
+   `identity/john@ceetool.com`을 사용합니다. 역할에서 IMDSv2 자격 증명을 읽을 수 있어야 합니다.
+3. SES 샌드박스에서는 수신 주소도 검증되어야 합니다. 현재는 검증된 동일 주소 간 발송이므로
+   샌드박스에서도 사용할 수 있지만, 향후 고객 메일은 운영 액세스 신청과 수신 동의·반송 처리가 필요합니다.
+4. 배포 후 최초 1회만 연결 확인 메일을 대기열에 등록합니다. 관리자 화면의
+   **관리자 메일 알림**에서 발송 접수·대기·오류, 테스트 메일, 오류 메일 재시도를 확인합니다.
+   AWS 설정을 수정한 뒤 **오류 메일 재시도**를 누르면 미발송 오류 건을 바로 다시 시도합니다.
+   테스트·재시도는 로그인·Origin·CSRF 검증과 시간당 요청 제한을 적용합니다.
+
+배포 로그의 `payment_email_status`로 연결 확인 결과를 확인합니다.
+`CredentialsProviderError`는 역할/자격 증명, `AccessDeniedException`은 IAM 권한,
+`MessageRejected`는 발신인 검증·샌드박스·발송 상태 등을 우선 점검합니다.
+키와 SES 원문 오류 메시지는 기록하지 않습니다. 별도 `NODE_ENV`나 AWS 리전 환경변수를 추가할 필요는 없습니다.
+수동 상태 확인은 서버에서 다음 읽기 명령을 사용합니다.
+
+```sh
+PAYMENT_DB_PATH=/home/ubuntu/ceetool-payments/data/payments.sqlite \
+  /home/ubuntu/ceetool-payments/current/runtime/node \
+  --env-file=/home/ubuntu/ceetool-payments/.env \
+  /home/ubuntu/ceetool-payments/current/server/src/email.mjs --status
 ```
 
 ### 운영 설정·저장·백업
