@@ -57,67 +57,6 @@ curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 2
 printf '\n'
 sudo "$release/runtime/node" "$release/server/deploy/install-nginx.mjs"
 trap - ERR
-if [ -f /etc/systemd/system/ceetool-payments-backup.timer ]; then
-    sudo systemctl disable --now ceetool-payments-backup.timer
-    sudo rm -- /etc/systemd/system/ceetool-payments-backup.timer
-fi
-if [ -f /etc/systemd/system/ceetool-payments-backup.service ]; then
-    sudo systemctl stop ceetool-payments-backup.service
-    sudo rm -- /etc/systemd/system/ceetool-payments-backup.service
-fi
-sudo systemctl daemon-reload
-if [ -L "$base/data" ] || [ -L "$base/data/backups" ]; then
-    echo "Refusing to clean a symlinked legacy storage directory." >&2
-    exit 1
-fi
-for file in "$base/data/payments.sqlite" "$base/data/payments.sqlite-wal" \
-    "$base/data/payments.sqlite-shm" "$base/data/payments.sqlite-journal"; do
-    if [ -L "$file" ] || { [ -e "$file" ] && [ ! -f "$file" ]; }; then
-        echo "Refusing to remove an unexpected legacy storage entry: $file" >&2
-        exit 1
-    fi
-    if [ -f "$file" ]; then
-        printf 'Removing unused legacy file: %s\n' "$file"
-        rm -- "$file"
-    fi
-done
-if [ -d "$base/data/backups" ]; then
-    while IFS= read -r -d '' file; do
-        name="${file##*/}"
-        if [[ "$name" =~ ^payments-[0-9]+-[a-f0-9]{8}\.(sql|sqlite)(\.partial)?$ ]]; then
-            printf 'Removing requested database backup: %s\n' "$file"
-            rm -- "$file"
-        fi
-    done < <(find "$base/data/backups" -maxdepth 1 -type f -print0)
-    while IFS= read -r -d '' directory; do
-        name="${directory##*/}"
-        if [[ "$name" =~ ^\.mysql-backup-[A-Za-z0-9]{6}$ ]]; then
-            if [ -L "$directory/client.cnf" ]; then
-                echo "Refusing to remove an unexpected backup credential symlink." >&2
-                exit 1
-            fi
-            if [ -f "$directory/client.cnf" ]; then rm -- "$directory/client.cnf"; fi
-            if [ -z "$(find "$directory" -mindepth 1 -maxdepth 1 -print -quit)" ]; then rmdir -- "$directory"; fi
-        fi
-    done < <(find "$base/data/backups" -mindepth 1 -maxdepth 1 -type d -print0)
-    if [ -z "$(find "$base/data/backups" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-        rmdir -- "$base/data/backups"
-    fi
-fi
-if [ -d "$base/data" ] && [ -z "$(find "$base/data" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-    rmdir -- "$base/data"
-fi
-if systemctl is-active --quiet ceetool-payments-backup.timer || systemctl is-active --quiet ceetool-payments-backup.service; then
-    echo "Legacy database backup units are unexpectedly active." >&2
-    exit 1
-fi
-echo "Database backup automation and legacy storage cleanup completed; MySQL data was not modified."
-if [ -d "$base/data" ]; then
-    echo "Unrecognized legacy directory entries were left untouched:"
-    find "$base/data" -mindepth 1 -maxdepth 2 -printf '%P\n'
-else
-    echo "Legacy data directory is absent."
-fi
 if ! "$release/runtime/node" --env-file="$base/.env" "$release/server/src/reconcile.mjs"; then
     echo "Payment receipt reconciliation is incomplete. Inspect reconciliation logs before retrying after at least one minute." >&2
 fi
