@@ -44,7 +44,7 @@ function Home() {
               <span className="text-kakao/80">SOFTWARE</span>{" "}
               <span className="text-purple-200">DEVELOPER</span>
             </p>
-            <h1 className="flex items-center gap-3 text-4xl font-extrabold tracking-tight text-purple-400 sm:text-5xl">
+            <h1 className="flex items-center gap-3 text-3xl font-extrabold tracking-tight text-purple-400 min-[375px]:text-4xl sm:text-5xl">
               <img
                 src="/logos/ceetool.logo.png"
                 alt=""
@@ -52,7 +52,7 @@ function Home() {
                 height={1024}
                 className="h-12 w-12 shrink-0 object-contain sm:h-16 sm:w-16"
               />
-              <span>CEETOOL</span>
+              <span>CEETOOL(씨툴)</span>
             </h1>
           </div>
           <nav
