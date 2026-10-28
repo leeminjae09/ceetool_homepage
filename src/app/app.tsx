@@ -69,18 +69,9 @@ function Home() {
             </a>
           </nav>
           <p className="basis-full break-keep text-base font-medium leading-relaxed text-gray-300 [overflow-wrap:anywhere] sm:text-lg">
-            <span className="block">
-              <strong className="font-semibold text-blue-500">15년 경력</strong>
-              의 백엔드 개발자와 프론트엔드 팀이 함께합니다.
-            </span>
-            <span className="mt-1 block">
-              쇼핑몰과 금융 시스템 개발 경험을 바탕으로, 웹사이트와 모바일 앱을
-              맞춤 제작합니다.
-            </span>
-            <span className="mt-1 block">
-              150여 개의 솔루션을 보유하고 있으며, 요구사항에 맞춘 맞춤형 제작이
-              가능합니다.
-            </span>
+            <strong className="font-semibold text-blue-500">15년</strong> 개발
+            경험과 150여 개의 솔루션을 바탕으로, 웹사이트와 모바일 앱을 맞춤
+            제작합니다.
           </p>
         </header>
         {contentError && (
