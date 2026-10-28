@@ -48,6 +48,13 @@
   }
 }
 
+@layer components {
+  .ceetool-brand-icon {
+    background-color: currentColor;
+    mask: url("/logos/ceetool.logo.png") center / contain no-repeat;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .service-showcase .swiper-wrapper {
     transition-duration: 0ms !important;

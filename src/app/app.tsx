@@ -44,13 +44,10 @@ function Home() {
               <span className="text-kakao/80">SOFTWARE</span>{" "}
               <span className="text-purple-200">DEVELOPER</span>
             </p>
-            <h1 className="flex items-center gap-3 text-3xl font-extrabold tracking-tight text-purple-400 min-[375px]:text-4xl sm:text-5xl">
-              <img
-                src="/logos/ceetool.logo.png"
-                alt=""
-                width={1024}
-                height={1024}
-                className="h-12 w-12 shrink-0 object-contain sm:h-16 sm:w-16"
+            <h1 className="flex items-center gap-3 text-3xl font-extrabold tracking-tight text-purple-300 min-[375px]:text-4xl sm:text-5xl">
+              <span
+                aria-hidden="true"
+                className="ceetool-brand-icon h-[1em] w-[1em] shrink-0"
               />
               <span>CEETOOL(씨툴)</span>
             </h1>
@@ -70,16 +67,16 @@ function Home() {
               <span>카카오톡 문의</span>
             </a>
           </nav>
-          <p className="basis-full text-base font-medium leading-relaxed text-gray-300 sm:text-lg">
-            <span className="font-bold text-blue-500">15년 경력</span>의 백엔드
-            개발자와{" "}
-            <span className="font-bold text-blue-500">
-              숙련된 프론트엔드 팀
+          <p className="basis-full break-keep text-base font-medium leading-relaxed text-gray-300 [overflow-wrap:anywhere] sm:text-lg">
+            <span className="block">
+              <strong className="font-semibold text-purple-300">
+                15년 경력
+              </strong>
+              의 백엔드 개발자와 프론트엔드 팀이 함께합니다.
             </span>
-            이{" "}
-            <span className="font-bold text-blue-500">쇼핑몰·결제 시스템</span>
-            을 중심으로 AI·마케팅 연동, 업무 자동화, 금융·공공기관 시스템을
-            개발합니다.
+            <span className="mt-1 block">
+              쇼핑몰·결제 시스템부터 AI 연동과 업무 자동화까지 개발합니다.
+            </span>
           </p>
         </header>
         {contentError && (
@@ -126,9 +123,7 @@ function Home() {
             </ul>
           </details>
         </section>
-        <BusinessInfo
-          className="space-y-1 border-t border-gray-800 py-8 text-center text-xs leading-relaxed text-gray-400"
-        />
+        <BusinessInfo className="space-y-1 border-t border-gray-800 py-8 text-center text-xs leading-relaxed text-gray-400" />
         {selectedProject && selectedDetails && (
           <ProjectDialog
             key={`${selectedProject.id}:${selectedProject.mediaSrc || ""}`}
