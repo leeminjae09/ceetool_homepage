@@ -77,6 +77,10 @@ function Home() {
               쇼핑몰과 금융 시스템 개발 경험을 바탕으로, 웹사이트와 모바일 앱을
               맞춤 제작합니다.
             </span>
+            <span className="mt-1 block">
+              150여 개의 솔루션을 보유하고 있으며, 요구사항에 맞춘 맞춤형 제작이
+              가능합니다.
+            </span>
           </p>
         </header>
         {contentError && (
