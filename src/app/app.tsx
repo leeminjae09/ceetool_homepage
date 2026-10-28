@@ -12,6 +12,7 @@ import DocumentationPage from "components/ProjectPage";
 import ProjectDialog from "components/ProjectDialog";
 import ServiceShowcase from "components/ServiceShowcase";
 import BusinessInfo from "components/BusinessInfo";
+import PolicyPage from "components/PolicyPage";
 import {
   PaymentAdminPage,
   PaymentPage,
@@ -69,13 +70,12 @@ function Home() {
           </nav>
           <p className="basis-full break-keep text-base font-medium leading-relaxed text-gray-300 [overflow-wrap:anywhere] sm:text-lg">
             <span className="block">
-              <strong className="font-semibold text-purple-300">
-                15년 경력
-              </strong>
+              <strong className="font-semibold text-blue-500">15년 경력</strong>
               의 백엔드 개발자와 프론트엔드 팀이 함께합니다.
             </span>
             <span className="mt-1 block">
-              쇼핑몰·결제 시스템부터 AI 연동과 업무 자동화까지 개발합니다.
+              쇼핑몰·거래소·은행 API 연동 경험을 바탕으로 웹부터 Android·iOS
+              앱까지 개발합니다.
             </span>
           </p>
         </header>
@@ -148,6 +148,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/docs/:docType" element={<DocumentationPage />} />
+        <Route path="/privacy" element={<PolicyPage policy="privacy" />} />
+        <Route path="/refund" element={<PolicyPage policy="refund" />} />
         <Route path="/pay/:token" element={<PaymentPage />} />
         <Route path="/pay/:token/result" element={<PaymentResultPage />} />
         <Route path="/admin" element={<PaymentAdminPage />} />

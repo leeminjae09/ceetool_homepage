@@ -13,6 +13,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import BusinessInfo from "components/BusinessInfo";
+import { PrivacyCollectionNotice } from "components/PolicyPage";
 import HomepageAdmin from "components/HomepageAdmin";
 import {
   paymentApi,
@@ -433,10 +434,7 @@ function CustomerPayment({ token }: { token: string }) {
               <details className="rounded-lg border border-gray-700 p-3 text-sm">
                 <summary className="cursor-pointer">개인정보 수집·이용</summary>
                 <p className="mt-3 leading-relaxed text-gray-300">
-                  씨툴은 결제 및 계약 이행을 위해 이름과 연락처를 수집합니다.
-                  이름·연락처는 결제 완료 후 5년간 보관하며, 미결제 주문은
-                  유효기간 종료 후 30일 이내 삭제합니다. 동의를 거부하면 결제를
-                  진행할 수 없습니다.
+                  <PrivacyCollectionNotice />
                 </p>
               </details>
               <label className="flex items-start gap-3 text-sm leading-relaxed">
