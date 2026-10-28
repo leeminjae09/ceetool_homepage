@@ -69,9 +69,10 @@ function Home() {
             </a>
           </nav>
           <p className="basis-full break-keep text-base font-medium leading-relaxed text-gray-300 [overflow-wrap:anywhere] sm:text-lg">
-            <strong className="font-semibold text-blue-500">16년</strong> 개발
-            경험과 150여 개의 솔루션을 바탕으로, 웹사이트와 모바일 앱을 맞춤
-            제작합니다.
+            <strong className="font-semibold text-blue-500">
+              16년 개발 경험
+            </strong>
+            과 150여 개의 솔루션을 바탕으로, 웹사이트와 모바일 앱을 맞춤 제작합니다.
           </p>
         </header>
         {contentError && (
