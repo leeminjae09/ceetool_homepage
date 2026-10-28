@@ -111,19 +111,22 @@ function ServiceRow({
   return (
     <article
       aria-labelledby={titleId}
-      className={`grid min-w-0 content-start items-start gap-6 rounded-2xl border bg-gray-900/90 p-5 sm:p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] ${
+      className={`grid min-w-0 content-start items-start gap-6 break-keep rounded-2xl border bg-gray-900/90 p-5 [overflow-wrap:anywhere] sm:p-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] ${
         service.featured ? "border-blue-400/30" : "border-gray-700/80"
       }`}
     >
-      <h3
-        id={titleId}
-        className="flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap text-lg font-bold leading-snug tracking-tight text-white sm:text-xl md:col-span-2 lg:col-span-1 xl:col-span-2"
-      >
-        <Icon className="h-5 w-5 shrink-0 text-purple-300" aria-hidden="true" />
-        <span>{service.title}</span>
-      </h3>
       <div className="min-w-0">
-        <p className="text-sm leading-relaxed text-gray-400">
+        <h3
+          id={titleId}
+          className="flex min-w-0 items-start gap-2 text-lg font-bold leading-snug tracking-tight text-white sm:text-xl"
+        >
+          <Icon
+            className="mt-1 h-5 w-5 shrink-0 text-purple-300"
+            aria-hidden="true"
+          />
+          <span className="min-w-0">{service.title}</span>
+        </h3>
+        <p className="mt-6 text-sm leading-relaxed text-gray-400">
           {service.tagline}
         </p>
         <div className="mt-6">
@@ -178,7 +181,7 @@ function ServiceRow({
         <div
           role="status"
           aria-atomic="true"
-          className="mt-3 min-w-0 overflow-x-auto px-1 py-1"
+          className="mt-3 min-w-0 px-1 py-1"
         >
           <ProjectCaption
             project={service.showcase[activeIndex].project}
