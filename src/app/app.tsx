@@ -45,7 +45,7 @@ function Home() {
               <span className="text-kakao/80">SOFTWARE</span>{" "}
               <span className="text-purple-200">DEVELOPER</span>
             </p>
-            <h1 className="flex items-center gap-3 text-3xl font-extrabold tracking-tight text-purple-300 min-[375px]:text-4xl sm:text-5xl">
+            <h1 className="flex items-center gap-3 text-3xl font-extrabold tracking-tight text-white min-[375px]:text-4xl sm:text-5xl">
               <span
                 aria-hidden="true"
                 className="ceetool-brand-icon h-[1em] w-[1em] shrink-0"
